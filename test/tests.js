@@ -1,0 +1,1 @@
+require('./collabrify_client');

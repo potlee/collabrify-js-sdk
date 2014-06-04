@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+	<input id='text' type="text" value="deep" size="100">
+	<script type='text/javascript' src="./bundle.js"></script>
+	<script type="text/javascript">
+	var c = new CollabrifyClient({
+		application_id: Long.fromString('4891981239025664'),
+		user_id: 'collabrify.tester@gmail.com'
+	});
+	//c.on('read', function(){
+		c.listSessions(['js_sample31'])
+	//});
+	c.on('list_sessions_done', function(sessions) {
+		console.log(sessions)
+		c.joinSession({session:sessions[sessions.length-1], password: 'password'})
+	});
+	c.on('event',function(message){
+		document.getElementById('text').value = message.data
+	});
+	</script>
+</body>
+
+</html>

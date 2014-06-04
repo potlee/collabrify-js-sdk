@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+	<input id='text' type="text" value="deep" onkeypress="send()" size="100">
+	<script type='text/javascript' src="./bundle.js"></script>
+	<script type="text/javascript">
+	var c = new CollabrifyClient({
+		application_id: Long.fromString('4891981239025664'),
+		user_id: 'collabrify.tester@gmail.com'
+	});
+	c.createSession({
+		name: 'node_test_session' + Math.random().toString(),
+		password: 'password',
+		tags: ['js_sample31'],
+		startPaused: false
+	});
+	c.on('session_created', function(session){
+		console.log(session)
+	});
+	send = function () {
+		console.log('sending')
+		c.broadcast({data: document.getElementById('text').value})
+	};
+	</script>
+</body>
+
+</html>

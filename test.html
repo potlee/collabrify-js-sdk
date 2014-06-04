@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+	<div> body <div>
+	<div id="mocha"></div>
+	<script type='text/javascript' src="mocha/mocha.js"></script>
+	<script>mocha.setup('bdd')</script>
+	<script type='text/javascript' src="tests_bundle.js"></script>
+	<script type="text/javascript"> 
+		//mocha.checkLeaks();
+		mocha.run() 
+	</script>
+</body>
+</html>

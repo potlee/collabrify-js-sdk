@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<div class='label'>Select pizza toppings</div> 
+	<img src="images/circle_icon.png" width="125px">
+	<img src="images/green-circle.png" width="30px" id='jalapenos_image'>
+	<ul class='checkbox'> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='pepperoni' value='pepperoni' title='Pepperoni'/>Pepperoni</li> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='sausage' value='sausage'  title='Sausage'/>Sausage</li> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='jalapenos' value='jalapenos' title='Mushrooms'/>Jalapenos</li> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='onions' value='onions' title='Onions'/>Onions</li> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='red_peppers' value='red_peppers' title='Green Peppers'/>Red Peppers</li> 
+	  <li><input type='checkbox' onclick='toggle_topping(this)' id='xcheese' value='xcheese' title='Extra Cheese'/>Extra Cheese</li> 
+	</ul>
+	commnets :
+	<input id='comments' type='text' value='' onkeypress='change_comments(this)' size='100'>
+	<script type='text/javascript' src='./bundle.js'></script>
+	<script type='text/javascript'>
+	data = {
+		toppings:{
+			pepperoni: false,
+			sausage: false,
+			jalapenos: false,
+			onions: false,
+			red_peppers: false,
+			xcheese: false
+		},
+		comments: ''
+	};
+	var c = new CollabrifyClient({
+		application_id: Long.fromString('4891981239025664'),
+		user_id: 'collabrify.tester@gmail.com'
+	});
+	c.createSession({
+		name: 'pizza_demo',// + Math.random().toString(),
+		password: 'password',
+		tags: ['tag8'],
+		startPaused: false
+	});
+	c.ondone('create_session', function(session){
+		console.log('session_created')
+		console.log(session)
+	});
+	c.onerror('create_session', function(){
+		console.log('listing sessions')
+		c.listSessions(['tag8'])
+	});
+	c.ondone('list_sessions', function(sessions) {
+		console.log(sessions)
+		c.joinSession({session:sessions[0], password: 'password'})
+	});
+	c.on('event',function(message){
+		data = message
+		for(var key in data.toppings){
+			document.getElementById(key).checked = data.toppings[key]
+			if(document.getElementById(key+'_image'))
+				document.getElementById(key+'_image').style.visibility = (data.toppings[key] ? "" : "hidden")
+		}
+		document.getElementById('comments').value = data.comments
+
+	});
+
+	change_comments = function(){
+		data.comments = document.getElementById('comments').value
+		c.broadcast(data, '')
+	}
+
+
+	toggle_topping = function (cb) {
+		document.getElementById(cb.value+'_image').style.visibility = (cb.checked ? "": "hidden")
+		data.toppings[cb.value] = cb.checked
+		data.comments = ''
+		c.broadcast(data, '')
+	};
+	</script>
+</body>
+
+</html>
