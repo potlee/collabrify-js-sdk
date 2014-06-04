@@ -20,9 +20,12 @@ describe 'CollabrifyClient', ->
 		@client.user_id.should.equal 'collabrify.tester@gmail.com'
 	
 	it 'should make a succesfull warmup request', (done) ->
-		@client.on 'ready', ->
+		c = new CollabrifyClient
+			application_id: Long.fromString('4891981239025664')
+			user_id: 'collabrify.tester@gmail.com'
+		c.on 'ready', ->
 			done()
-		@client.on 'error', (error) ->
+		c.on 'error', (error) ->
 
 	it 'should broadcast message', (done) ->
 		this.timeout(6000)
@@ -62,55 +65,56 @@ describe 'CollabrifyClient', ->
 			throw error
 
 	it 'should create session', (done) ->
-		@client.createSession
+		c = new CollabrifyClient
+			application_id: Long.fromString('4891981239025664')
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
 			name: 'node_test_session' + Math.random().toString()
 			password: 'password' 
 			tags: ['node_test_session']
 			startPaused: false
-		@client.ondone 'create_session', (session) =>
+		c.ondone 'create_session', (session) =>
 			session.session_name.split('_').should.have.length 3
 			session.session_tag[0].should.equal 'node_test_session'
-			@client.session.session_tag[0].should.equal 'node_test_session'
+			c.session.session_tag[0].should.equal 'node_test_session'
 			done()
-		@client.on 'notifications_start', ->
+		c.on 'notifications_start', ->
 			#alert 'start'
-		@client.on 'notifications_error', (error) ->
+		c.on 'notifications_error', (error) ->
 			alert 'internet turned off'
 
 	it 'should create session with basefile and join it', (done) ->
 		@timeout 20000
 		tag = 'node_test_session' + Math.random().toString()
-		@client.createSession
+		c = new CollabrifyClient
+			application_id: Long.fromString('4891981239025664')
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
 			name: 'node_test_session' + Math.random().toString()
 			password: 'password' 
 			tags: [tag]
 			startPaused: false
 			baseFile: {this: 'is', a: 'basefile'}
 
-		@client.ondone 'create_session', =>
-			@client.listSessions [tag]
+		c.ondone 'create_session', =>
+			c.listSessions [tag]
 		
-		@client.ondone 'list_sessions', (list) =>
-			console.log list[0]
-			@client.joinSession 
+		c.ondone 'list_sessions', (list) =>
+			c.joinSession 
 				session: list[0]
 				password: 'password'
 
-		@client.ondone 'join_session', (session) ->
+		c.ondone 'join_session', (session) ->
 			session.baseFile.a.should.equal 'basefile'
-
+			done()
 
 	it 'should look for sessions with tags', (done) ->
-		unless window?
-			console.log 'not testable on node'
+		@client.listSessions ['node_test_session']
+		@client.ondone 'list_sessions', (list) ->
+			list.should.be.an 'Array'
 			done()
-		else
-			@client.listSessions ['node_test_session']
-			@client.ondone 'list_sessions', (list) ->
-				list.should.be.an 'Array'
-				done()
-			@client.onerror 'list_sessions', (error) ->
-				error.should.not.exist()
+		@client.onerror 'list_sessions', (error) ->
+			error.should.not.exist()
 
 	# it 'should be able to prevent further joins', (done) ->
 	# 	@client.createSession

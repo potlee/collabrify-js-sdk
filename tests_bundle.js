@@ -4063,7 +4063,8 @@ module.exports.chunkSize = 1024 * 1024 * 2;
 
 module.exports.request = (function(_this) {
   return function(options) {
-    var callback, http_options, request;
+    var callback, client, http_options, request;
+    client = _this.client;
     callback = function(res) {
       if (res.setEncoding) {
         res.setEncoding('base64');
@@ -4153,7 +4154,7 @@ CollabrifyClient = (function() {
       this[key] = value;
     }
     this.eventEmitter = new EventEmitter();
-    Collabrify.client = this;
+    Collabrify.request.client = this;
     this.submission_registration_id = 1;
     this.warmupRequest();
   }
@@ -4253,7 +4254,6 @@ CollabrifyClient = (function() {
               message: chunk,
               ondone: function(buf) {
                 if (is_last) {
-                  console.log('done sending basefile');
                   return _this.eventEmitter('create_session_done');
                 }
               }
@@ -4282,7 +4282,6 @@ CollabrifyClient = (function() {
       }),
       ondone: (function(_this) {
         return function(buf, header) {
-          console.log('done');
           _this.newSessionHandler(buf, 'join', header);
           if (_this.session.base_file_size) {
             return Collabrify.requestSynch({
@@ -4371,7 +4370,6 @@ CollabrifyClient = (function() {
         var addEvent, addParticipant, event, notification, participant_id, removeParticipant, response, _i, _len, _ref;
         notification = Collabrify.CollabrifyNotification.decode64(message.data);
         if (notification.notification_message_type === 1) {
-          console.log('event');
           addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload);
           event = addEvent.event;
           event.submission_registration_id = addEvent.submission_registration_id;
@@ -4386,18 +4384,15 @@ CollabrifyClient = (function() {
           _this.eventEmitter.emitOrdered('event', event);
         }
         if (notification.notification_message_type === 2) {
-          console.log('participant added');
           addParticipant = Collabrify.Notification_AddParticipant.decode64(notification.payload);
           _this.session.participant[addParticipant.participant.participant_id] = addParticipant.participant;
           _this.eventEmitter.emit('user_joined', addParticipant.participant);
         }
         if (notification.notification_message_type === 3) {
-          console.log('session_ended');
           _this.eventEmitter.emit('sesson_ended', _this.session);
           _this.reset();
         }
         if (notification.notification_message_type === 4) {
-          console.log('participant left');
           removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload);
           if (_this.catchup_participant_ids) {
             _this.catchup_participant_ids[removeParticipant.participant_id] = null;
@@ -4406,7 +4401,6 @@ CollabrifyClient = (function() {
         }
         if (notification.notification_message_type === 5) {
           _this.catchup_participant_ids = {};
-          console.log('channels connected notification');
           response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload);
           _ref = response.participant_id;
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
@@ -12412,10 +12406,15 @@ describe('CollabrifyClient', function() {
     return this.client.user_id.should.equal('collabrify.tester@gmail.com');
   });
   it('should make a succesfull warmup request', function(done) {
-    this.client.on('ready', function() {
+    var c;
+    c = new CollabrifyClient({
+      application_id: Long.fromString('4891981239025664'),
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    c.on('ready', function() {
       return done();
     });
-    return this.client.on('error', function(error) {});
+    return c.on('error', function(error) {});
   });
   it('should broadcast message', function(done) {
     var c;
@@ -12472,30 +12471,39 @@ describe('CollabrifyClient', function() {
     });
   });
   it('should create session', function(done) {
-    this.client.createSession({
+    var c;
+    c = new CollabrifyClient({
+      application_id: Long.fromString('4891981239025664'),
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    c.createSession({
       name: 'node_test_session' + Math.random().toString(),
       password: 'password',
       tags: ['node_test_session'],
       startPaused: false
     });
-    this.client.ondone('create_session', (function(_this) {
+    c.ondone('create_session', (function(_this) {
       return function(session) {
         session.session_name.split('_').should.have.length(3);
         session.session_tag[0].should.equal('node_test_session');
-        _this.client.session.session_tag[0].should.equal('node_test_session');
+        c.session.session_tag[0].should.equal('node_test_session');
         return done();
       };
     })(this));
-    this.client.on('notifications_start', function() {});
-    return this.client.on('notifications_error', function(error) {
+    c.on('notifications_start', function() {});
+    return c.on('notifications_error', function(error) {
       return alert('internet turned off');
     });
   });
   it('should create session with basefile and join it', function(done) {
-    var tag;
+    var c, tag;
     this.timeout(20000);
     tag = 'node_test_session' + Math.random().toString();
-    this.client.createSession({
+    c = new CollabrifyClient({
+      application_id: Long.fromString('4891981239025664'),
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    c.createSession({
       name: 'node_test_session' + Math.random().toString(),
       password: 'password',
       tags: [tag],
@@ -12505,38 +12513,33 @@ describe('CollabrifyClient', function() {
         a: 'basefile'
       }
     });
-    this.client.ondone('create_session', (function(_this) {
+    c.ondone('create_session', (function(_this) {
       return function() {
-        return _this.client.listSessions([tag]);
+        return c.listSessions([tag]);
       };
     })(this));
-    this.client.ondone('list_sessions', (function(_this) {
+    c.ondone('list_sessions', (function(_this) {
       return function(list) {
-        console.log(list[0]);
-        return _this.client.joinSession({
+        return c.joinSession({
           session: list[0],
           password: 'password'
         });
       };
     })(this));
-    return this.client.ondone('join_session', function(session) {
-      return session.baseFile.a.should.equal('x');
+    return c.ondone('join_session', function(session) {
+      session.baseFile.a.should.equal('basefile');
+      return done();
     });
   });
   return it('should look for sessions with tags', function(done) {
-    if (typeof window === "undefined" || window === null) {
-      console.log('not testable on node');
+    this.client.listSessions(['node_test_session']);
+    this.client.ondone('list_sessions', function(list) {
+      list.should.be.an('Array');
       return done();
-    } else {
-      this.client.listSessions(['node_test_session']);
-      this.client.ondone('list_sessions', function(list) {
-        list.should.be.an('Array');
-        return done();
-      });
-      return this.client.onerror('list_sessions', function(error) {
-        return error.should.not.exist();
-      });
-    }
+    });
+    return this.client.onerror('list_sessions', function(error) {
+      return error.should.not.exist();
+    });
   });
 });
 

@@ -43,6 +43,7 @@ global.host = 'collabrify-test-cloud.appspot.com'
 module.exports.chunkSize = 1024*1024*2
 
 module.exports.request = (options) =>
+	client = @client
 	callback = (res) ->
 		res.setEncoding('base64') if res.setEncoding
 		res.on 'data', (chunk) ->
@@ -53,7 +54,6 @@ module.exports.request = (options) =>
 			else
 				console.log e = new Error(header.exception.exception_type + header.exception.message)
 				client.eventEmitter.emit 'error', e
-
 
 		res.on 'error', (e) ->
 			console.log e

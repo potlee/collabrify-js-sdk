@@ -9,7 +9,7 @@ class CollabrifyClient
 		for key, value of options
 			this[key] = value
 		@eventEmitter = new EventEmitter()
-		Collabrify.client = this
+		Collabrify.request.client = this
 		@submission_registration_id = 1
 		this.warmupRequest()
 
@@ -96,7 +96,6 @@ class CollabrifyClient
 
 						ondone: (buf) =>
 							if is_last
-								console.log 'done sending basefile'
 								@eventEmitter 'create_session_done'
 
 	joinSession: (options) ->
@@ -115,7 +114,6 @@ class CollabrifyClient
 				participant_notification_medium_type: 1
 
 			ondone: (buf, header) =>
-				console.log 'done'
 				@newSessionHandler(buf, 'join', header)
 
 				if @session.base_file_size
@@ -182,7 +180,6 @@ class CollabrifyClient
 			notification = Collabrify.CollabrifyNotification.decode64(message.data)
 
 			if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
-				console.log 'event'
 				addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload)
 				event = addEvent.event
 				
@@ -197,18 +194,15 @@ class CollabrifyClient
 				@eventEmitter.emitOrdered 'event', event
 
 			if notification.notification_message_type == 2 #Collabrify.NotificationMessageType['ADD_PARTICIPANT_NOTIFICATION']
-				console.log 'participant added'
 				addParticipant = Collabrify.Notification_AddParticipant.decode64(notification.payload)
 				@session.participant[addParticipant.participant.participant_id] = addParticipant.participant
 				@eventEmitter.emit 'user_joined', addParticipant.participant
 
 			if notification.notification_message_type == 3 #Collabrify.NotificationMessageType['END_SESSION_NOTIFICATION']
-				console.log 'session_ended'
 				@eventEmitter.emit 'sesson_ended', @session
 				@reset()
 
 			if notification.notification_message_type == 4 #Collabrify.NotificationMessageType['REMOVE_PARTICIPANT_NOTIFICATION']
-				console.log 'participant left'
 				removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload)
 				if @catchup_participant_ids
 					@catchup_participant_ids[removeParticipant.participant_id] = null
@@ -216,7 +210,6 @@ class CollabrifyClient
 
 			if notification.notification_message_type == 5 #Collabrify.NotificationMessageType['ON_CHANNEL_CONNECTED_NOTIFICATION']
 				@catchup_participant_ids = {}
-				console.log 'channels connected notification'
 				response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload)
 				for participant_id in response.participant_id
 					unless @session.participant[participant_id]
