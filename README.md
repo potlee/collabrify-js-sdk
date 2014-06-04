@@ -11,14 +11,14 @@ Just drop this script tag in you html file:
 ```
 Now you can initiatiate a Collbrify Client:
 ```javascript
-	client = new CollabrifyClient({
+	var client = new CollabrifyClient({
 		application_id: Long.fromString('1234567890'),
 		user_id: 'example@gmail.com'
 	});
 ```
 Now start a collabrified session:
 ```javascript
-	client = new CollabrifyClient({
+	var client = new CollabrifyClient({
 		application_id: Long.fromString('1234567890'),
 		user_id: 'example@gmail.com'
 	});
