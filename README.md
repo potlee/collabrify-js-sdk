@@ -6,15 +6,20 @@ The javascript SDK for the Collabrify.it backend
 
 Making your webapp Collabrified with Collabrify is a breeze.
 Just drop this script tag in you html file:
+```javascript
 	<script scr='path/to/hosted/Collabrify.js'></script>
+```
 Now you can initiatiate a Collbrify Client:
+```javascript
 	<script>
 		client = new CollabrifyClient({
 			application_id: Long.fromString('1234567890'),
 			user_id: 'example@gmail.com'
 		});
 	</script>
+```
 Now start a collabrified session:
+```javascript
 	<script>
 		client = new CollabrifyClient({
 			application_id: Long.fromString('1234567890'),
@@ -26,7 +31,9 @@ Now start a collabrified session:
 			tags: ['you_sesson_tag1','you_sesson_tag2']
 		});
 	</script>
+```
 On another webpage, lets search for the session and join in:
+
 	<script>
 		client = new CollabrifyClient({
 			application_id: Long.fromString('1234567890'),
