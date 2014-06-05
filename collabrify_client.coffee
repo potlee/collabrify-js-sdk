@@ -199,8 +199,8 @@ class CollabrifyClient
 				@eventEmitter.emit 'user_joined', addParticipant.participant
 
 			if notification.notification_message_type == 3 #Collabrify.NotificationMessageType['END_SESSION_NOTIFICATION']
-				@eventEmitter.emit 'sesson_ended', @session
 				@reset()
+				@eventEmitter.emit 'sesson_ended', @session
 
 			if notification.notification_message_type == 4 #Collabrify.NotificationMessageType['REMOVE_PARTICIPANT_NOTIFICATION']
 				removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload)
@@ -260,7 +260,6 @@ class CollabrifyClient
 				eventEmitter.emit 'ready'
 	
 #untested
-#optional bool end if owner
 	leaveSession: ->
 		Collabrify.request
 			header: 'REMOVE_PARTICIPANT_REQUEST'
@@ -271,9 +270,8 @@ class CollabrifyClient
 
 			ondone: (buf) =>
 				response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf)
-				#todo
-				@eventEmitter.emit 'leave_session_done'
 				@reset()
+				@eventEmitter.emit 'leave_session_done'
 
 	endSession: ->
 		if(@currentUserOwnsSession())
@@ -284,13 +282,13 @@ class CollabrifyClient
 					access_info: @accessInfo()
 
 				ondone: (buf) ->
-					#response = Collabrify.EndSessionResponse.decodeDelimited(buf)
-					@eventEmitter.emit 'end_session_done'
+					response = Collabrify.EndSessionResponse.decodeDelimited(buf)
 					@reset()
+					@eventEmitter.emit 'end_session_done'
 
 		else
 			console.log e = new Error('user does not own session')
-			@eventEmitter.emit 'end_session_error', e
+			@eventEmitter.emit 'error', e
 
 #todo
 	preventFurtherJoins: ->
