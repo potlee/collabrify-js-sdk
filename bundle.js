@@ -4057,32 +4057,31 @@ module.exports.GetFromBaseFileRequest = builder.build('Request_GetFromBaseFile_P
 
 module.exports.GetFromBaseFileResponse = builder.build('Response_GetFromBaseFile_PB');
 
-global.host = 'collabrify-test-cloud.appspot.com';
+global.host = '166.collabrify-cloud.appspot.com';
 
 module.exports.chunkSize = 1024 * 1024 * 2;
 
 module.exports.request = (function(_this) {
   return function(options) {
     var callback, client, http_options, request;
+    options.reject || (options.reject = function() {});
     client = _this.client;
     callback = function(res) {
       if (res.setEncoding) {
         res.setEncoding('base64');
       }
       res.on('data', function(chunk) {
-        var buf, e, header;
+        var buf, header;
         buf = ByteBuffer.wrap(chunk);
         header = ResponseHeader.decodeDelimited(buf);
         if (header.success_flag) {
           return options.ondone(buf, header);
         } else {
-          console.log(e = new Error(header.exception.exception_type + header.exception.message));
-          return client.eventEmitter.emit('error', e);
+          return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
         }
       });
       return res.on('error', function(e) {
-        console.log(e);
-        return client.eventEmitter.emit('error', e);
+        return options.reject(e);
       });
     };
     http_options = {
@@ -4103,6 +4102,9 @@ module.exports.request = (function(_this) {
     if (options.message != null) {
       request.write(options.message);
     }
+    request.on('error', function(e) {
+      return alert('this shoud happen');
+    });
     return request.end();
   };
 })(this);
@@ -4174,136 +4176,149 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.broadcast = function(message, event_type) {
-    var messageBuffer, messageByteBuffer;
-    messageByteBuffer = new ByteBuffer();
-    messageByteBuffer.writeJSON(message);
-    messageBuffer = messageByteBuffer.toBuffer();
-    return Collabrify.requestSynch({
-      header: 'ADD_EVENT_REQUEST',
-      body: new Collabrify.AddEventRequest({
-        access_info: this.accessInfo(),
-        number_of_bytes_to_follow: messageBuffer.byteLength,
-        submission_registration_id: this.submission_registration_id++,
-        event_type: event_type
-      }),
-      message: messageBuffer,
-      ondone: (function(_this) {
-        return function(buf) {
-          var event;
-          event = Collabrify.AddEventResponse.decodeDelimited(buf);
-          event.data = message;
-          event.order_id = event.new_event_order_id;
-          event.event_type = event_type;
-          event.elapsed = function() {
-            return Date.now() - _this.timeAdjustment - event.timestamp;
-          };
-          event.author = _this.participant;
-          return _this.eventEmitter.emit('broadcast_done', event);
-        };
-      })(this)
-    });
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        var messageBuffer, messageByteBuffer;
+        messageByteBuffer = new ByteBuffer();
+        messageByteBuffer.writeJSON(message);
+        messageBuffer = messageByteBuffer.toBuffer();
+        return Collabrify.requestSynch({
+          header: 'ADD_EVENT_REQUEST',
+          reject: reject,
+          body: new Collabrify.AddEventRequest({
+            access_info: _this.accessInfo(),
+            number_of_bytes_to_follow: messageBuffer.byteLength,
+            submission_registration_id: _this.submission_registration_id++,
+            event_type: event_type
+          }),
+          message: messageBuffer,
+          ondone: function(buf) {
+            var event;
+            event = Collabrify.AddEventResponse.decodeDelimited(buf);
+            event.data = message;
+            event.order_id = event.new_event_order_id;
+            event.event_type = event_type;
+            event.elapsed = function() {
+              return Date.now() - _this.timeAdjustment - event.timestamp;
+            };
+            event.author = _this.participant;
+            return fulfill(event);
+          }
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.createSession = function(sessionProperties) {
-    var i, messageBuffer, messageByteBuffer, _i, _ref;
-    messageByteBuffer = new ByteBuffer();
-    this.basefile_chunks = [];
-    if (sessionProperties.baseFile) {
-      messageByteBuffer.writeJSON(sessionProperties.baseFile);
-      messageBuffer = messageByteBuffer.toBuffer();
-      for (i = _i = 0, _ref = Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize); 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
-        this.basefile_chunks.push(messageBuffer.slice(i * Collabrify.chunkSize, Math.min((i + 1) * Collabrify.chunkSize, messageBuffer.byteLength)));
-      }
-    }
-    this.sessionPassword = sessionProperties.password;
-    return Collabrify.request({
-      header: 'CREATE_SESSION_REQUEST',
-      include_timestamp_in_response: true,
-      body: new Collabrify.CreateSessionRequest({
-        access_info: this.accessInfo(),
-        session_tag: sessionProperties.tags,
-        session_name: sessionProperties.name,
-        session_password: this.sessionPassword,
-        owner_display_name: this.display_name,
-        number_of_bytes_to_follow: this.basefile_chunks[0] ? this.basefile_chunks[0].byteLength : void 0,
-        flag__session_has_base_file: this.basefile_chunks.length,
-        flag__base_file_complete: this.basefile_chunks.length < 2,
-        owner_notification_medium_type: 1,
-        participant_limit: sessionProperties.participantLimit || 0
-      }),
-      message: this.basefile_chunks[0],
-      ondone: (function(_this) {
-        return function(buf, header) {
-          var chunk, is_last, _j, _len, _ref1, _results;
-          _this.newSessionHandler(buf, 'create', header);
-          if (!(_this.basefile_chunks.length > 1)) {
-            _this.eventEmitter.emit('create_session_done', _this.session, _this.participant);
+    return new Promise((function(_this) {
+      return function(fullfill, reject) {
+        var i, messageBuffer, messageByteBuffer, _i, _ref;
+        messageByteBuffer = new ByteBuffer();
+        _this.basefile_chunks = [];
+        if (sessionProperties.baseFile) {
+          messageByteBuffer.writeJSON(sessionProperties.baseFile);
+          messageBuffer = messageByteBuffer.toBuffer();
+          for (i = _i = 0, _ref = Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize); 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
+            _this.basefile_chunks.push(messageBuffer.slice(i * Collabrify.chunkSize, Math.min((i + 1) * Collabrify.chunkSize, messageBuffer.byteLength)));
           }
-          _ref1 = _this.basefile_chunks.slice(1);
-          _results = [];
-          for (i = _j = 0, _len = _ref1.length; _j < _len; i = ++_j) {
-            chunk = _ref1[i];
-            is_last = i === (_this.basefile_chunks.length - 2);
-            _results.push(Collabrify.requestSynch({
-              header: 'ADD_TO_BASE_FILE_REQUEST',
-              body: new Collabrify.AddToBaseFileRequest({
-                access_info: _this.accessInfo(),
-                number_of_bytes_to_follow: chunk.byteLength,
-                flag__base_file_complete: is_last
-              }),
-              message: chunk,
-              ondone: function(buf) {
-                if (is_last) {
-                  return _this.eventEmitter('create_session_done');
+        }
+        _this.sessionPassword = sessionProperties.password;
+        return Collabrify.request({
+          header: 'CREATE_SESSION_REQUEST',
+          include_timestamp_in_response: true,
+          reject: reject,
+          body: new Collabrify.CreateSessionRequest({
+            access_info: _this.accessInfo(),
+            session_tag: sessionProperties.tags,
+            session_name: sessionProperties.name,
+            session_password: _this.sessionPassword,
+            owner_display_name: _this.display_name,
+            number_of_bytes_to_follow: _this.basefile_chunks[0] ? _this.basefile_chunks[0].byteLength : void 0,
+            flag__session_has_base_file: _this.basefile_chunks.length,
+            flag__base_file_complete: _this.basefile_chunks.length < 2,
+            owner_notification_medium_type: 1,
+            participant_limit: sessionProperties.participantLimit || 0
+          }),
+          message: _this.basefile_chunks[0],
+          ondone: function(buf, header) {
+            var chunk, is_last, _j, _len, _ref1, _results;
+            console.log('created');
+            _this.newSessionHandler(buf, 'create', header);
+            if (!(_this.basefile_chunks.length > 1)) {
+              console.log('fullfill');
+              fullfill(_this.session);
+            }
+            _ref1 = _this.basefile_chunks.slice(1);
+            _results = [];
+            for (i = _j = 0, _len = _ref1.length; _j < _len; i = ++_j) {
+              chunk = _ref1[i];
+              is_last = i === (_this.basefile_chunks.length - 2);
+              _results.push(Collabrify.requestSynch({
+                header: 'ADD_TO_BASE_FILE_REQUEST',
+                reject: reject,
+                body: new Collabrify.AddToBaseFileRequest({
+                  access_info: _this.accessInfo(),
+                  number_of_bytes_to_follow: chunk.byteLength,
+                  flag__base_file_complete: is_last
+                }),
+                message: chunk,
+                ondone: function(buf) {
+                  if (is_last) {
+                    return fullfill(_this.session);
+                  }
                 }
-              }
-            }));
+              }));
+            }
+            return _results;
           }
-          return _results;
-        };
-      })(this)
-    });
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.joinSession = function(options) {
-    var a;
-    this.sessionPassword = options.password;
-    a = this.accessInfo();
-    a.session_id = options.session.session_id;
-    a.session_password = options.password;
-    return Collabrify.request({
-      header: 'ADD_PARTICIPANT_REQUEST',
-      include_timestamp_in_response: true,
-      body: new Collabrify.AddParticipantRequest({
-        access_info: a,
-        participant_display_name: this.display_name,
-        participant_notification_id: '',
-        participant_notification_medium_type: 1
-      }),
-      ondone: (function(_this) {
-        return function(buf, header) {
-          _this.newSessionHandler(buf, 'join', header);
-          if (_this.session.base_file_size) {
-            return Collabrify.requestSynch({
-              header: 'GET_FROM_BASE_FILE_REQUEST',
-              body: new Collabrify.GetFromBaseFileRequest({
-                access_info: _this.accessInfo(),
-                start_position: 0,
-                length: _this.session.base_file_size
-              }),
-              ondone: function(buf) {
-                var response;
-                response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
-                _this.session.baseFile = buf.readJSON();
-                return _this.eventEmitter.emit('join_session_done', _this.session, _this.prticipant);
-              }
-            });
-          } else {
-            return _this.eventEmitter.emit('join_session_done', _this.session, _this.participant);
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        var a;
+        _this.sessionPassword = options.password;
+        a = _this.accessInfo();
+        a.session_id = options.session.session_id;
+        a.session_password = options.password;
+        return Collabrify.request({
+          header: 'ADD_PARTICIPANT_REQUEST',
+          include_timestamp_in_response: true,
+          reject: reject,
+          body: new Collabrify.AddParticipantRequest({
+            access_info: a,
+            participant_display_name: _this.display_name,
+            participant_notification_id: '',
+            participant_notification_medium_type: 1
+          }),
+          ondone: function(buf, header) {
+            _this.newSessionHandler(buf, 'join', header);
+            if (_this.session.base_file_size) {
+              return Collabrify.requestSynch({
+                header: 'GET_FROM_BASE_FILE_REQUEST',
+                reject: reject,
+                body: new Collabrify.GetFromBaseFileRequest({
+                  access_info: _this.accessInfo(),
+                  start_position: 0,
+                  length: _this.session.base_file_size
+                }),
+                ondone: function(buf) {
+                  var response;
+                  response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
+                  _this.session.baseFile = buf.readJSON();
+                  return fulfill(_this.session);
+                }
+              });
+            } else {
+              return fulfill(_this.session);
+            }
           }
-        };
-      })(this)
-    });
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.newSessionHandler = function(buf, request_type, header) {
@@ -4328,20 +4343,23 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.listSessions = function(tags) {
-    return Collabrify.request({
-      header: 'LIST_SESSIONS_REQUEST',
-      body: new Collabrify.ListSessionsRequest({
-        access_info: this.accessInfo(),
-        session_tag: tags
-      }),
-      ondone: (function(_this) {
-        return function(buf) {
-          var list;
-          list = Collabrify.ListSessionsResponse.decodeDelimited(buf);
-          return _this.eventEmitter.emit('list_sessions_done', list.session);
-        };
-      })(this)
-    });
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        return Collabrify.request({
+          header: 'LIST_SESSIONS_REQUEST',
+          reject: reject,
+          body: new Collabrify.ListSessionsRequest({
+            access_info: _this.accessInfo(),
+            session_tag: tags
+          }),
+          ondone: function(buf) {
+            var list;
+            list = Collabrify.ListSessionsResponse.decodeDelimited(buf);
+            return fulfill(list.session);
+          }
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.on = function(e, c) {
@@ -4389,8 +4407,8 @@ CollabrifyClient = (function() {
           _this.eventEmitter.emit('user_joined', addParticipant.participant);
         }
         if (notification.notification_message_type === 3) {
-          _this.eventEmitter.emit('sesson_ended', _this.session);
           _this.reset();
+          _this.eventEmitter.emit('sesson_ended', _this.session);
         }
         if (notification.notification_message_type === 4) {
           removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload);
@@ -4441,16 +4459,14 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.warmupRequest = function() {
-    var collabrifyRequest, eventEmitter, request, warmupRequest;
-    collabrifyRequest = 'WARMUP_REQUEST';
-    warmupRequest = new Collabrify.WarmupRequest;
-    eventEmitter = this.eventEmitter;
-    return request = Collabrify.request({
-      header: collabrifyRequest,
-      body: warmupRequest,
-      ondone: function() {
-        return eventEmitter.emit('ready');
-      }
+    return Collabrify.request({
+      header: 'WARMUP_REQUEST',
+      body: new Collabrify.WarmupRequest,
+      ondone: (function(_this) {
+        return function() {
+          return _this.eventEmitter.emit('ready');
+        };
+      })(this)
     });
   };
 
@@ -4465,8 +4481,8 @@ CollabrifyClient = (function() {
         return function(buf) {
           var response;
           response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf);
-          _this.eventEmitter.emit('leave_session_done');
-          return _this.reset();
+          _this.reset();
+          return _this.eventEmitter.emit('leave_session_done');
         };
       })(this)
     });
@@ -4481,13 +4497,15 @@ CollabrifyClient = (function() {
           access_info: this.accessInfo()
         }),
         ondone: function(buf) {
-          this.eventEmitter.emit('end_session_done');
-          return this.reset();
+          var response;
+          response = Collabrify.EndSessionResponse.decodeDelimited(buf);
+          this.reset();
+          return this.eventEmitter.emit('end_session_done');
         }
       });
     } else {
       console.log(e = new Error('user does not own session'));
-      return this.eventEmitter.emit('end_session_error', e);
+      return this.eventEmitter.emit('error', e);
     }
   };
 

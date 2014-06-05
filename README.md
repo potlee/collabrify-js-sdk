@@ -9,7 +9,7 @@ Just drop this script tag in you html file:
 ```javascript
 	<script scr='path/to/hosted/Collabrify.js'></script>
 ```
-Now you can initiatiate a Collbrify Client:
+Now you can instantiate a Collbrify Client:
 ```javascript
 	var client = new CollabrifyClient({
 		application_id: Long.fromString('1234567890'),
@@ -35,10 +35,11 @@ On another webpage, lets search for the session and join in:
 		user_id: 'example@gmail.com'
 	});
 	client.listSessions(['you_sesson_tags']);
-	client.ondone('list_sessions', function (sessions) {
+	.then(function (sessions) {
 		client.joinSession({session: sessions[0], password: 'password'});
 	});
-	client.ondone('join_sesion', function (session) {});
+	.then(function (session) {});
+	.catch(function (e) {"catch any errors here"})
 ```
 And, BOOM! you App is now collabrified. Send messages between clients like so:
 ```javascript

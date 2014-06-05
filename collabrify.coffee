@@ -37,12 +37,13 @@ module.exports.AddToBaseFileRequest = builder.build 'Request_AddToBaseFile_PB'
 module.exports.AddToBaseFileResponse = builder.build 'Response_AddToBaseFile_PB'
 module.exports.GetFromBaseFileRequest = builder.build 'Request_GetFromBaseFile_PB'
 module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile_PB'
-global.host = 'collabrify-test-cloud.appspot.com'
+global.host = '166.collabrify-cloud.appspot.com'
 #global.host =  'localhost:9292'
 
 module.exports.chunkSize = 1024*1024*2
 
 module.exports.request = (options) =>
+	options.reject ||= ->
 	client = @client
 	callback = (res) ->
 		res.setEncoding('base64') if res.setEncoding
@@ -52,12 +53,10 @@ module.exports.request = (options) =>
 			if header.success_flag
 				options.ondone(buf, header)
 			else
-				console.log e = new Error(header.exception.exception_type + header.exception.message)
-				client.eventEmitter.emit 'error', e
+				options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
 
 		res.on 'error', (e) ->
-			console.log e
-			client.eventEmitter.emit 'error', e
+			options.reject e
 	
 	http_options =
 		host: global.host
@@ -73,7 +72,10 @@ module.exports.request = (options) =>
 	).encodeDelimited().toBuffer()
 	request.write options.body.encodeDelimited().toBuffer()
 	request.write(options.message) if options.message?
+	request.on 'error', (e) =>
+		alert 'this shoud happen'
 	request.end()
+
 
 
 requestQueue = []

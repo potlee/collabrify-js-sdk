@@ -12,7 +12,7 @@ class CollabrifyClient
 		@eventEmitter = new EventEmitter()
 		Collabrify.request.client = this
 		@submission_registration_id = 1
-		this.warmupRequest()
+		@warmupRequest()
 
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
@@ -25,113 +25,123 @@ class CollabrifyClient
 		accessInfo
 
 	broadcast: (message, event_type) ->
-		messageByteBuffer = new ByteBuffer()
-		messageByteBuffer.writeJSON message
-		messageBuffer = messageByteBuffer.toBuffer()
-		Collabrify.requestSynch
-			header: 'ADD_EVENT_REQUEST'
+		new Promise (fulfill, reject) =>
+			messageByteBuffer = new ByteBuffer()
+			messageByteBuffer.writeJSON message
+			messageBuffer = messageByteBuffer.toBuffer()
+			Collabrify.requestSynch
+				header: 'ADD_EVENT_REQUEST'
+				reject: reject
 
-			body: new Collabrify.AddEventRequest
-				access_info: @accessInfo()
-				number_of_bytes_to_follow: messageBuffer.byteLength
-				submission_registration_id: @submission_registration_id++
-				event_type: event_type
+				body: new Collabrify.AddEventRequest
+					access_info: @accessInfo()
+					number_of_bytes_to_follow: messageBuffer.byteLength
+					submission_registration_id: @submission_registration_id++
+					event_type: event_type
 
-			message: messageBuffer
+				message: messageBuffer
 
-			ondone: (buf) =>
-				event = Collabrify.AddEventResponse.decodeDelimited(buf)
-				event.data = message
-				event.order_id = event.new_event_order_id
-				event.event_type = event_type
-				event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
-				event.author = @participant
-				@eventEmitter.emit 'broadcast_done', event
+				ondone: (buf) =>
+					event = Collabrify.AddEventResponse.decodeDelimited(buf)
+					event.data = message
+					event.order_id = event.new_event_order_id
+					event.event_type = event_type
+					event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
+					event.author = @participant
+					fulfill(event)
 
 	createSession: (sessionProperties) ->
-		messageByteBuffer = new ByteBuffer()
-		@basefile_chunks = []
-		if sessionProperties.baseFile
-			messageByteBuffer.writeJSON sessionProperties.baseFile
-			messageBuffer = messageByteBuffer.toBuffer()
-			for i in [0...Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize)]
-				@basefile_chunks.push(messageBuffer.slice(
-					i * Collabrify.chunkSize
-					Math.min((i+1) * Collabrify.chunkSize, messageBuffer.byteLength)
-				))
-		@sessionPassword = sessionProperties.password
+		new Promise (fullfill, reject) =>
+			messageByteBuffer = new ByteBuffer()
+			@basefile_chunks = []
+			if sessionProperties.baseFile
+				messageByteBuffer.writeJSON sessionProperties.baseFile
+				messageBuffer = messageByteBuffer.toBuffer()
+				for i in [0...Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize)]
+					@basefile_chunks.push(messageBuffer.slice(
+						i * Collabrify.chunkSize
+						Math.min((i+1) * Collabrify.chunkSize, messageBuffer.byteLength)
+					))
+			@sessionPassword = sessionProperties.password
 
-		Collabrify.request
-			header: 'CREATE_SESSION_REQUEST'
-			include_timestamp_in_response: true
+			Collabrify.request
+				header: 'CREATE_SESSION_REQUEST'
+				include_timestamp_in_response: true
+				reject: reject
 
-			body: new Collabrify.CreateSessionRequest
-				access_info: @accessInfo()
-				session_tag: sessionProperties.tags
-				session_name: sessionProperties.name
-				session_password: @sessionPassword
-				owner_display_name: @display_name
-				number_of_bytes_to_follow: if @basefile_chunks[0] then @basefile_chunks[0].byteLength
-				flag__session_has_base_file: @basefile_chunks.length
-				flag__base_file_complete: (@basefile_chunks.length < 2)
-				owner_notification_medium_type: 1
-				participant_limit: sessionProperties.participantLimit || 0
+				body: new Collabrify.CreateSessionRequest
+					access_info: @accessInfo()
+					session_tag: sessionProperties.tags
+					session_name: sessionProperties.name
+					session_password: @sessionPassword
+					owner_display_name: @display_name
+					number_of_bytes_to_follow: if @basefile_chunks[0] then @basefile_chunks[0].byteLength
+					flag__session_has_base_file: @basefile_chunks.length
+					flag__base_file_complete: (@basefile_chunks.length < 2)
+					owner_notification_medium_type: 1
+					participant_limit: sessionProperties.participantLimit || 0
 
-			message: @basefile_chunks[0]
+				message: @basefile_chunks[0]
 
-			ondone: (buf, header) =>
-				@newSessionHandler(buf, 'create', header)
-				unless @basefile_chunks.length > 1
-					@eventEmitter.emit 'create_session_done', @session, @participant
-				for chunk, i in @basefile_chunks[1..]
-					is_last = (i == (@basefile_chunks.length - 2))
-					Collabrify.requestSynch
-						header: 'ADD_TO_BASE_FILE_REQUEST'
+				ondone: (buf, header) =>
+					console.log 'created'
+					@newSessionHandler(buf, 'create', header)
+					unless @basefile_chunks.length > 1
+						console.log 'fullfill'
+						fullfill(@session)
+					for chunk, i in @basefile_chunks[1..]
+						is_last = (i == (@basefile_chunks.length - 2))
+						Collabrify.requestSynch
+							header: 'ADD_TO_BASE_FILE_REQUEST'
+							reject: reject
 
-						body: new Collabrify.AddToBaseFileRequest
-							access_info: @accessInfo()
-							number_of_bytes_to_follow: chunk.byteLength
-							flag__base_file_complete: is_last
+							body: new Collabrify.AddToBaseFileRequest
+								access_info: @accessInfo()
+								number_of_bytes_to_follow: chunk.byteLength
+								flag__base_file_complete: is_last
 
-						message: chunk
+							message: chunk
 
-						ondone: (buf) =>
-							if is_last
-								@eventEmitter 'create_session_done'
+							ondone: (buf) =>
+								if is_last
+									fullfill(@session)
+
 
 	joinSession: (options) ->
-		@sessionPassword = options.password
-		a = @accessInfo()
-		a.session_id = options.session.session_id
-		a.session_password = options.password
-		Collabrify.request
-			header: 'ADD_PARTICIPANT_REQUEST'
-			include_timestamp_in_response: true
+		new Promise (fulfill, reject) =>
+			@sessionPassword = options.password
+			a = @accessInfo()
+			a.session_id = options.session.session_id
+			a.session_password = options.password
+			Collabrify.request
+				header: 'ADD_PARTICIPANT_REQUEST'
+				include_timestamp_in_response: true
+				reject: reject
 
-			body: new Collabrify.AddParticipantRequest
-				access_info: a
-				participant_display_name: @display_name
-				participant_notification_id: ''
-				participant_notification_medium_type: 1
+				body: new Collabrify.AddParticipantRequest
+					access_info: a
+					participant_display_name: @display_name
+					participant_notification_id: ''
+					participant_notification_medium_type: 1
 
-			ondone: (buf, header) =>
-				@newSessionHandler(buf, 'join', header)
+				ondone: (buf, header) =>
+					@newSessionHandler(buf, 'join', header)
+					if @session.base_file_size
+						Collabrify.requestSynch
+							header: 'GET_FROM_BASE_FILE_REQUEST'
+							reject: reject
 
-				if @session.base_file_size
-					Collabrify.requestSynch
-						header: 'GET_FROM_BASE_FILE_REQUEST'
+							body: new Collabrify.GetFromBaseFileRequest
+								access_info: @accessInfo()
+								start_position: 0
+								length: @session.base_file_size
 
-						body: new Collabrify.GetFromBaseFileRequest
-							access_info: @accessInfo()
-							start_position: 0
-							length: @session.base_file_size
-
-						ondone: (buf) =>
-							response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf)
-							@session.baseFile = buf.readJSON()
-							@eventEmitter.emit 'join_session_done', @session, @prticipant
-				else
-					@eventEmitter.emit 'join_session_done', @session, @participant
+							ondone: (buf) =>
+								response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf)
+								@session.baseFile = buf.readJSON()
+								fulfill(@session)
+					else
+						fulfill(@session)
 
 
 	newSessionHandler: (buf, request_type, header) ->
@@ -151,22 +161,24 @@ class CollabrifyClient
 		@subscribeToChannel(response[user].notification_id)
 
 	listSessions: (tags) ->
-		Collabrify.request
-			header: 'LIST_SESSIONS_REQUEST'
+		new Promise (fulfill, reject) =>
+			Collabrify.request
+				header: 'LIST_SESSIONS_REQUEST'
+				reject: reject
 
-			body: new Collabrify.ListSessionsRequest
-				access_info: @accessInfo()
-				session_tag: tags
+				body: new Collabrify.ListSessionsRequest
+					access_info: @accessInfo()
+					session_tag: tags
 
-			ondone: (buf) =>
-				list = Collabrify.ListSessionsResponse.decodeDelimited(buf)
-				@eventEmitter.emit 'list_sessions_done', list.session
+				ondone: (buf) =>
+					list = Collabrify.ListSessionsResponse.decodeDelimited(buf)
+					fulfill(list.session)
+
 
 	on: (e,c) ->
 		@eventEmitter.on e, c
 	onerror: (event, callback) ->
 		@on((event + '_error'), callback)
-
 	ondone: (event, callback) ->
 		@on((event + '_done'), callback)
 
@@ -243,6 +255,7 @@ class CollabrifyClient
 				# 				body = Collabrify.GetEventResponse.decodeDelimited(buf)
 				# 				@eventEmitter.emitOrdered 'event', body.event, event.order_id
 
+
 		socket.onerror = (error) =>
 			@eventEmitter.emit 'notifications_error', error
 		
@@ -250,12 +263,11 @@ class CollabrifyClient
 			@eventEmitter.emit 'notifications_close'
 
 	warmupRequest: -> 
-		warmupRequest = new Collabrify.WarmupRequest
-		request = Collabrify.request
+		Collabrify.request
 			header: 'WARMUP_REQUEST'
-			body: warmupRequest
-			ondone: ->
-				eventEmitter.emit 'ready'
+			body: new Collabrify.WarmupRequest
+			ondone: =>
+				@eventEmitter.emit 'ready'
 	
 #untested
 	leaveSession: ->
