@@ -19,7 +19,7 @@ header => Collabrifyheader
 body => CollabrifyResponse
 use httpHeader and httpBody otherwise
 
-ios testing:
+ios protopyting:
 $web.loadRequest(NSURLRequest.alloc.initWithURL(NSURL.URLWithString('http://0.0.0.0:8000/pizza.html')))
 c = $web.valueForKeyPath "documentView.webView.mainFrame.javaScriptContext"
 

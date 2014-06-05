@@ -23,8 +23,8 @@ Now start a collabrified session:
 		user_id: 'example@gmail.com'
 	});
 	client.createSession({
-		name: 'you_session_name'
-		password: 'password'
+		name: 'you_session_name',
+		password: 'password',
 		tags: ['you_sesson_tag1','you_sesson_tag2']
 	});
 ```
@@ -36,8 +36,8 @@ On another webpage, lets search for the session and join in:
 	});
 	client.listSessions(['you_sesson_tags']);
 	client.ondone('list_sessions', function (sessions) {
-		client.joinSession(sessions[0])
-	}
+		client.joinSession({session: sessions[0], password: 'password'});
+	});
 	client.ondone('join_sesion', function (session) {});
 ```
 And, BOOM! you App is now collabrified. Send messages between clients like so:
