@@ -1,5 +1,6 @@
 setup
 insall node.js
+npm install promise --save
 npm install bytebuffer.js
 npm insall -g coffeescript
 npm install -g mocha

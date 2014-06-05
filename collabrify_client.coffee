@@ -1,3 +1,4 @@
+
 EventEmitter = require('./ordered_event_emitter');
 ByteBuffer = require 'bytebuffer'
 Collabrify = require './collabrify'
@@ -248,13 +249,10 @@ class CollabrifyClient
 		socket.onclose = (close) =>
 			@eventEmitter.emit 'notifications_close'
 
-	warmupRequest: ->
-		collabrifyRequest = 'WARMUP_REQUEST'
+	warmupRequest: -> 
 		warmupRequest = new Collabrify.WarmupRequest
-
-		eventEmitter = @eventEmitter
 		request = Collabrify.request
-			header: collabrifyRequest
+			header: 'WARMUP_REQUEST'
 			body: warmupRequest
 			ondone: ->
 				eventEmitter.emit 'ready'
