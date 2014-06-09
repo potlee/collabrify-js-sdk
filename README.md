@@ -137,6 +137,9 @@ Resumes incoming events.
 #### notifications_error
 #### notifications_close
 
+## Errors
+All errors except for notification errors are handled through promises.
+
 
 
 
