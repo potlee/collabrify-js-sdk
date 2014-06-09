@@ -2,14 +2,18 @@
 <html>
 <head></head>
 <body>
-	<div id='client'> body <div>
+	<div id='body'> body <div>
 	<script src="https://www.promisejs.org/polyfills/promise-4.0.0.js"></script>
 	<script type='text/javascript' src="bundle.js"></script>
 	<script type="text/javascript">
-		function refresh
-		function nc () {
-			return new CollabrifyClient(arguments[0]);
+		function d (arg) {
+			document.getElementById('body').innerHTML = JSON.stringify(arg);
 		}
+
+		function new_collabrify_client (a) {
+			return new CollabrifyClient(a);
+		}
+
 	</script>
 </body>
 </html>

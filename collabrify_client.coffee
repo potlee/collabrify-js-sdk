@@ -5,7 +5,8 @@ Collabrify = require './collabrify'
 goog = require './channel'
 class CollabrifyClient
 	constructor: (options) ->
-		@user_id = 'ANONYMOUS_ID@' + Math.random().toString() #uuid.v1()
+		localStorage.user_id ||= 'ANONYMOUS_ID@' + Math.random().toString() #uuid.v1()
+		@user_id = localStorage.user_id
 		@display_name = 'ANONYMOUS'
 		for key, value of options
 			this[key] = value
@@ -84,10 +85,8 @@ class CollabrifyClient
 				message: @basefile_chunks[0]
 
 				ondone: (buf, header) =>
-					console.log 'created'
 					@newSessionHandler(buf, 'create', header)
 					unless @basefile_chunks.length > 1
-						console.log 'fullfill'
 						fullfill(@session)
 					for chunk, i in @basefile_chunks[1..]
 						is_last = (i == (@basefile_chunks.length - 2))
@@ -105,7 +104,6 @@ class CollabrifyClient
 							ondone: (buf) =>
 								if is_last
 									fullfill(@session)
-
 
 	joinSession: (options) ->
 		new Promise (fulfill, reject) =>
@@ -143,7 +141,6 @@ class CollabrifyClient
 					else
 						fulfill(@session)
 
-
 	newSessionHandler: (buf, request_type, header) ->
 		user = if request_type is 'create' then 'owner' else 'participant'
 		if request_type == 'create'
@@ -174,7 +171,6 @@ class CollabrifyClient
 					list = Collabrify.ListSessionsResponse.decodeDelimited(buf)
 					fulfill(list.session)
 
-
 	on: (e,c) ->
 		@eventEmitter.on e, c
 	onerror: (event, callback) ->
@@ -189,7 +185,8 @@ class CollabrifyClient
 		socket.onopen = (open) =>
 			@eventEmitter.emit 'notifications_start'
 		
-		socket.onmessage = (message) => 
+		socket.onmessage = (message) =>
+			return unless @session 
 			notification = Collabrify.CollabrifyNotification.decode64(message.data)
 
 			if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
@@ -230,7 +227,7 @@ class CollabrifyClient
 						Collabrify.request
 							header: 'GET_PARTICIPANT_REQUEST'
 
-							body: new Collabrify.GetParticipant
+							body: new Collabrify.GetParticipantRequest
 								access_info: @accessInfo()
 								participant_id: [participant_id]
 
@@ -246,7 +243,7 @@ class CollabrifyClient
 				# 	Collabrify.request
 				# 		header: new Collabrify.RequestHeader
 				# 			request_type: Collabrify.RequestType['GET_EVENT_REQUEST']
-				# 		body: new Collabrify.GetEvent
+				# 		body: new Collabrify.GetEventRequest
 				# 			access_info: @accessInfo()
 				# 			order_id: @eventEmitter.nextEvent
 				# 		ondone: (buf) ->
@@ -269,61 +266,73 @@ class CollabrifyClient
 			ondone: =>
 				@eventEmitter.emit 'ready'
 	
-#untested
 	leaveSession: ->
-		Collabrify.request
-			header: 'REMOVE_PARTICIPANT_REQUEST'
+		new Promise (fulfill, reject) =>
+			Collabrify.request
+				header: 'REMOVE_PARTICIPANT_REQUEST'
+				reject: reject
 
-			body: new collabrify.RemoveParticipantRequest
-				access_info: @accessInfo()
-				to_be_removed_participant_id: @session.participant_id[0]
+				body: new Collabrify.RemoveParticipantRequest
+					access_info: @accessInfo()
+					to_be_removed_participant_id: @session.participant_id[0]
 
-			ondone: (buf) =>
-				response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf)
-				@reset()
-				@eventEmitter.emit 'leave_session_done'
+				ondone: (buf) =>
+					response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf)
+					@reset()
+					fulfill()
 
 	endSession: ->
-		if(@currentUserOwnsSession())
-			Collabrify.request
-				header: 'END_SESSION_REQUEST'
+		new Promise (fulfill, reject) =>
+			if(@currentUserOwnsSession())
+				Collabrify.request
+					header: 'END_SESSION_REQUEST'
+					reject: reject
 
-				body: new Collabrify.EndSessionRequest
-					access_info: @accessInfo()
+					body: new Collabrify.EndSessionRequest
+						access_info: @accessInfo()
 
-				ondone: (buf) ->
-					response = Collabrify.EndSessionResponse.decodeDelimited(buf)
-					@reset()
-					@eventEmitter.emit 'end_session_done'
+					ondone: (buf) =>
+						response = Collabrify.EndSessionResponse.decodeDelimited(buf)
+						@reset()
+						fulfill()
 
-		else
-			console.log e = new Error('user does not own session')
-			@eventEmitter.emit 'error', e
+			else
+				reject new Error('user does not own session')
 
-#todo
 	preventFurtherJoins: ->
-		Collabrify.request
-			header: 'PREVENT_FURTHER_JOINS_REQUEST'
+		new Promise (fulfill, reject) =>
+			Collabrify.request
+				header: 'PREVENT_FURTHER_JOINS_REQUEST'
+				reject: reject
 
-			body: new Collabrify.PreventFurtherJoins
-				access_info: @accessInfo()
-				session_id: @session.session_id
+				body: new Collabrify.PreventFurtherJoinsReq
+					access_info: @accessInfo()
+					session_id: @session.session_id
 
-			ondone: (buf) ->
-				console.log Collabrify.RequestHeader.decodeDelimited(buf)
+				ondone: (buf) =>
+					alert 'prevented'
+					fulfill()
+					#console.log Collabrify.RequestHeader.decodeDelimited(buf)
 
 	pauseEvents: ->
+		@pausedEvents = []
+		@pausedEmit = @eventEmitter.emit
+		@eventEmitter.emit = () =>
+			@pausedEvents.push arguments
 
 	resumeEvents: ->
+		@eventEmitter.emit = @pausedEmit
+		for event in @pausedEvents
+			@eventEmitter.emit(event...)
 
 	currentUserOwnsSession: ->
-		session.owner.participant.participant_id == @participant.participant_id
+		@session.owner.participant_id.low == @participant.participant_id.low
 
 	reset: ->
 		@participantsHash = {}
-		@session=null
-		@participant=null
+		@session = undefined
+		@participant = undefined
 		@submission_registration_id = 1
-		@sessionPassword = null
+		@sessionPassword = undefined
 
 module.exports = CollabrifyClient

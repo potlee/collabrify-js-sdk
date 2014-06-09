@@ -4149,7 +4149,8 @@ CollabrifyClient = (function() {
   function CollabrifyClient(options) {
     this.subscribeToChannel = __bind(this.subscribeToChannel, this);
     var key, value;
-    this.user_id = 'ANONYMOUS_ID@' + Math.random().toString();
+    localStorage.user_id || (localStorage.user_id = 'ANONYMOUS_ID@' + Math.random().toString());
+    this.user_id = localStorage.user_id;
     this.display_name = 'ANONYMOUS';
     for (key in options) {
       value = options[key];
@@ -4242,10 +4243,8 @@ CollabrifyClient = (function() {
           message: _this.basefile_chunks[0],
           ondone: function(buf, header) {
             var chunk, is_last, _j, _len, _ref1, _results;
-            console.log('created');
             _this.newSessionHandler(buf, 'create', header);
             if (!(_this.basefile_chunks.length > 1)) {
-              console.log('fullfill');
               fullfill(_this.session);
             }
             _ref1 = _this.basefile_chunks.slice(1);
@@ -4386,6 +4385,9 @@ CollabrifyClient = (function() {
     socket.onmessage = (function(_this) {
       return function(message) {
         var addEvent, addParticipant, event, notification, participant_id, removeParticipant, response, _i, _len, _ref;
+        if (!_this.session) {
+          return;
+        }
         notification = Collabrify.CollabrifyNotification.decode64(message.data);
         if (notification.notification_message_type === 1) {
           addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload);
@@ -4427,7 +4429,7 @@ CollabrifyClient = (function() {
               _this.catchup_participant_ids[participant_id] = true;
               Collabrify.request({
                 header: 'GET_PARTICIPANT_REQUEST',
-                body: new Collabrify.GetParticipant({
+                body: new Collabrify.GetParticipantRequest({
                   access_info: _this.accessInfo(),
                   participant_id: [participant_id]
                 }),
@@ -4471,71 +4473,101 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.leaveSession = function() {
-    return Collabrify.request({
-      header: 'REMOVE_PARTICIPANT_REQUEST',
-      body: new collabrify.RemoveParticipantRequest({
-        access_info: this.accessInfo(),
-        to_be_removed_participant_id: this.session.participant_id[0]
-      }),
-      ondone: (function(_this) {
-        return function(buf) {
-          var response;
-          response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf);
-          _this.reset();
-          return _this.eventEmitter.emit('leave_session_done');
-        };
-      })(this)
-    });
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        return Collabrify.request({
+          header: 'REMOVE_PARTICIPANT_REQUEST',
+          reject: reject,
+          body: new Collabrify.RemoveParticipantRequest({
+            access_info: _this.accessInfo(),
+            to_be_removed_participant_id: _this.session.participant_id[0]
+          }),
+          ondone: function(buf) {
+            var response;
+            response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf);
+            _this.reset();
+            return fulfill();
+          }
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.endSession = function() {
-    var e;
-    if (this.currentUserOwnsSession()) {
-      return Collabrify.request({
-        header: 'END_SESSION_REQUEST',
-        body: new Collabrify.EndSessionRequest({
-          access_info: this.accessInfo()
-        }),
-        ondone: function(buf) {
-          var response;
-          response = Collabrify.EndSessionResponse.decodeDelimited(buf);
-          this.reset();
-          return this.eventEmitter.emit('end_session_done');
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        if (_this.currentUserOwnsSession()) {
+          return Collabrify.request({
+            header: 'END_SESSION_REQUEST',
+            reject: reject,
+            body: new Collabrify.EndSessionRequest({
+              access_info: _this.accessInfo()
+            }),
+            ondone: function(buf) {
+              var response;
+              response = Collabrify.EndSessionResponse.decodeDelimited(buf);
+              _this.reset();
+              return fulfill();
+            }
+          });
+        } else {
+          return reject(new Error('user does not own session'));
         }
-      });
-    } else {
-      console.log(e = new Error('user does not own session'));
-      return this.eventEmitter.emit('error', e);
-    }
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.preventFurtherJoins = function() {
-    return Collabrify.request({
-      header: 'PREVENT_FURTHER_JOINS_REQUEST',
-      body: new Collabrify.PreventFurtherJoins({
-        access_info: this.accessInfo(),
-        session_id: this.session.session_id
-      }),
-      ondone: function(buf) {
-        return console.log(Collabrify.RequestHeader.decodeDelimited(buf));
-      }
-    });
+    return new Promise((function(_this) {
+      return function(fulfill, reject) {
+        return Collabrify.request({
+          header: 'PREVENT_FURTHER_JOINS_REQUEST',
+          reject: reject,
+          body: new Collabrify.PreventFurtherJoinsReq({
+            access_info: _this.accessInfo(),
+            session_id: _this.session.session_id
+          }),
+          ondone: function(buf) {
+            alert('prevented');
+            return fulfill();
+          }
+        });
+      };
+    })(this));
   };
 
-  CollabrifyClient.prototype.pauseEvents = function() {};
+  CollabrifyClient.prototype.pauseEvents = function() {
+    this.pausedEvents = [];
+    this.pausedEmit = this.eventEmitter.emit;
+    return this.eventEmitter.emit = (function(_this) {
+      return function() {
+        return _this.pausedEvents.push(arguments);
+      };
+    })(this);
+  };
 
-  CollabrifyClient.prototype.resumeEvents = function() {};
+  CollabrifyClient.prototype.resumeEvents = function() {
+    var event, _i, _len, _ref, _ref1, _results;
+    this.eventEmitter.emit = this.pausedEmit;
+    _ref = this.pausedEvents;
+    _results = [];
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      event = _ref[_i];
+      _results.push((_ref1 = this.eventEmitter).emit.apply(_ref1, event));
+    }
+    return _results;
+  };
 
   CollabrifyClient.prototype.currentUserOwnsSession = function() {
-    return session.owner.participant.participant_id === this.participant.participant_id;
+    return this.session.owner.participant_id.low === this.participant.participant_id.low;
   };
 
   CollabrifyClient.prototype.reset = function() {
     this.participantsHash = {};
-    this.session = null;
-    this.participant = null;
+    this.session = void 0;
+    this.participant = void 0;
     this.submission_registration_id = 1;
-    return this.sessionPassword = null;
+    return this.sessionPassword = void 0;
   };
 
   return CollabrifyClient;
@@ -12534,13 +12566,80 @@ describe('CollabrifyClient', function() {
       throw e;
     });
   });
-  return it('should look for sessions with tags', function(done) {
+  it('should look for sessions with tags', function(done) {
     this.timeout(4000);
     return this.client.listSessions(['node_test_session']).then(function(list) {
       list.should.be.an('Array');
       return done();
     })["catch"](function(e) {
       throw e;
+    });
+  });
+  it('should leave session', function(done) {
+    var c;
+    this.timeout(3000);
+    c = new CollabrifyClient({
+      application_id: '4891981239025664',
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    return c.createSession({
+      name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: false
+    }).then(function() {
+      return c.leaveSession();
+    }).then(function() {
+      String(c.session).should.equal('undefined');
+      return done();
+    })["catch"](function(e) {
+      throw e;
+    });
+  });
+  it('should end session', function(done) {
+    var c;
+    this.timeout(3000);
+    c = new CollabrifyClient({
+      application_id: '4891981239025664',
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    return c.createSession({
+      name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: false
+    }).then(function() {
+      return c.endSession();
+    }).then(function() {
+      String(c.session).should.equal('undefined');
+      return done();
+    })["catch"](function(e) {
+      return alert(e);
+    });
+  });
+  return it('should prevent further joins', function(done) {
+    var c, tag;
+    this.timeout(5000);
+    tag = 'node_test_session' + Math.random().toString();
+    c = new CollabrifyClient({
+      application_id: '4891981239025664',
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    return c.createSession({
+      name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: [tag],
+      startPaused: false,
+      baseFile: {
+        "this": 'is',
+        a: 'basefile'
+      }
+    }).then(function() {
+      return c.preventFurtherJoins();
+    }).then(function() {
+      return done();
+    })["catch"](function(e) {
+      return console.log(e);
     });
   });
 });

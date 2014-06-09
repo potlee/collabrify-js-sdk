@@ -5,8 +5,6 @@ class AppDelegate
 
     $web = UIWebView.alloc.initWithFrame(UIScreen.mainScreen.bounds)
 
-    
-
     $window.addSubview($web)
     true
   end

@@ -21,8 +21,11 @@ body => CollabrifyResponse
 use httpHeader and httpBody otherwise
 
 ios protopyting:
-$web.loadRequest(NSURLRequest.alloc.initWithURL(NSURL.URLWithString('http://0.0.0.0:8000/pizza.html')))
+$web.loadRequest(NSURLRequest.alloc.initWithURL(NSURL.URLWithString('http://0.0.0.0:8000/index.html')))
 c = $web.valueForKeyPath "documentView.webView.mainFrame.javaScriptContext"
+cb = c['new_collabrify_client'].callWithArguments [{application_id:'4891981239025664', user_id: 'collabrify.tester@gmail.com'}]
+cb.invokeMethod 'createSession', withArguments: [{name: 'asdasdpizza_demo',password: 'password',tags: ['tag899']}]
+
 
 The compiler is not your friend (because it doesnt exist).
 If you do not follow documentation, unexpected behavior will occur, this is normal.

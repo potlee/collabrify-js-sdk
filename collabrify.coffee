@@ -76,8 +76,6 @@ module.exports.request = (options) =>
 		alert 'this shoud happen'
 	request.end()
 
-
-
 requestQueue = []
 
 requestSynch = (options) =>

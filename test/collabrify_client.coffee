@@ -117,6 +117,61 @@ describe 'CollabrifyClient', ->
 		.catch (e) ->
 			throw e
 
+	it 'should leave session', (done) ->
+		@timeout 3000
+		c = new CollabrifyClient
+			application_id: '4891981239025664'
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
+			name: 'node_test_session' + Math.random().toString()
+			password: 'password' 
+			tags: ['node_test_session']
+			startPaused: false
+		.then ->
+			c.leaveSession()
+		.then ->
+			String(c.session).should.equal 'undefined'
+			done()
+		.catch (e) ->
+			throw e
+
+	it 'should end session', (done) ->
+		@timeout 3000
+		c = new CollabrifyClient
+			application_id: '4891981239025664'
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
+			name: 'node_test_session' + Math.random().toString()
+			password: 'password' 
+			tags: ['node_test_session']
+			startPaused: false
+		.then ->
+			c.endSession()
+		.then ->
+			String(c.session).should.equal 'undefined'
+			done()
+		.catch (e) ->
+			alert e
+
+	it 'should prevent further joins', (done) ->
+		@timeout 5000
+		tag = 'node_test_session' + Math.random().toString()
+		c = new CollabrifyClient
+			application_id: '4891981239025664'
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
+			name: 'node_test_session' + Math.random().toString()
+			password: 'password' 
+			tags: [tag]
+			startPaused: false
+			baseFile: {this: 'is', a: 'basefile'}
+		.then ->
+			c.preventFurtherJoins()
+		.then ->
+			done()
+		.catch (e) ->
+			console.log e
+
 	# it 'should be able to prevent further joins', (done) ->
 	# 	@client.createSession
 	# 		name: 'node_test_session' + Math.random().toString()
