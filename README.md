@@ -73,7 +73,7 @@ CollabrifyClient#createSession
 ```
 Returns a promise that get resolved when a sessions is created on server.
 
-CollabrifyClient#listSession
+# CollabrifyClient#listSession
 ```javascript
 	client.listSession(['an', 'array', 'of', 'tags']);
 ```
@@ -129,6 +129,7 @@ Resumes incoming events.
 
 
 ## Events
+
 
 
 
