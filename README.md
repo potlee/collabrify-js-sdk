@@ -54,7 +54,7 @@ And recieve the data on the other clients
 
 ## Full API Documentation
 
-Initialize
+### Initialize
 
 ```javascript
 	var client = new CollabrifyClient({
@@ -63,7 +63,7 @@ Initialize
 	});
 ```
 
-CollabrifyClient#createSession 
+### CollabrifyClient#createSession 
 ```javascript
 	client.createSession({
 		name: 'name of the session',
