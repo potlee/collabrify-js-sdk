@@ -63,7 +63,7 @@ And recieve the data on the other clients
 	});
 ```
 
-### CollabrifyClient#createSession 
+### CollabrifyClient#createSession()
 ```javascript
 	client.createSession({
 		name: 'name of the session',
@@ -73,55 +73,55 @@ And recieve the data on the other clients
 ```
 Returns a promise that get resolved when a sessions is created on server.
 
-### CollabrifyClient#listSession
+### CollabrifyClient#listSession()
 ```javascript
 	client.listSession(['an', 'array', 'of', 'tags']);
 ```
 Returns a promise that get resolved when a list of sessions objects is available.
 
-### Collaborify#joinSession
+### Collaborify#joinSession()
 ```javascript
 	client.joinSession({session: session, password: 'password'});
 ```
 Returns a promise that gets resolved when the session is joined.
 
-### CollabrifyClient#broadbast
+### CollabrifyClient#broadbast()
 ```javascript
 	client.broadcast({any: 'javascript', object: 1});
 ```
 Returns a promise that gets resolved when broadcast is done.
 
-### CollabrifyClient#broadbast
+### CollabrifyClient#broadbast()
 ```javascript
 	client.broadcast({any: 'javascript', object: 1});
 ```
 Returns a promise that gets resolved when broadcast is done.
 
-### CollabrifyClient#leaveSession
+### CollabrifyClient#leaveSession()
 ```javascript
 	client.leaveSession();
 ```
 Returns a promise that gets resolved when session has been left.
 
-### CollabrifyClient#endSession
+### CollabrifyClient#endSession()
 ```javascript
 	client.leaveSession();
 ```
 Returns a promise that gets resolved when session has been left. Can only be called by owner.
 
-### CollabrifyClient#preventFurtherJoins
+### CollabrifyClient#preventFurtherJoins()
 ```javascript
 	client.preventFurtherJoins();
 ```
 Returns a promise that gets resolved when a confirmation from the server is recieved. Can only be called by owner.
 
-### CollabrifyClient#pauseEvents
+### CollabrifyClient#pauseEvents()
 ```javascript
 	client.pauseEvents();
 ```
 Pauses incoming events.
 
-### CollabrifyClient#resumeEvents
+### CollabrifyClient#resumeEvents()
 ```javascript
 	client.resumeEvents();
 ```

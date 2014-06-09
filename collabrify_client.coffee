@@ -173,10 +173,6 @@ class CollabrifyClient
 
 	on: (e,c) ->
 		@eventEmitter.on e, c
-	onerror: (event, callback) ->
-		@on((event + '_error'), callback)
-	ondone: (event, callback) ->
-		@on((event + '_done'), callback)
 
 	subscribeToChannel: (channel) =>
 		channel = new goog.appengine.Channel(channel)
@@ -251,7 +247,6 @@ class CollabrifyClient
 				# 			if header.success_flag
 				# 				body = Collabrify.GetEventResponse.decodeDelimited(buf)
 				# 				@eventEmitter.emitOrdered 'event', body.event, event.order_id
-
 
 		socket.onerror = (error) =>
 			@eventEmitter.emit 'notifications_error', error
