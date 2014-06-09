@@ -54,7 +54,7 @@ And recieve the data on the other clients
 
 ## Full API Documentation
 
-Create a new client using:
+Initialize
 
 ```javascript
 	var client = new CollabrifyClient({
@@ -63,7 +63,7 @@ Create a new client using:
 	});
 ```
 
-CollabrifyClient#createSession takes in
+CollabrifyClient#createSession 
 ```javascript
 	client.createSession({
 		name: 'name of the session',
@@ -71,12 +71,62 @@ CollabrifyClient#createSession takes in
 		tags: ['you_sesson_tag1','you_sesson_tag2']
 	});
 ```
+Returns a promise that get resolved when a sessions is created on server.
 
-CollabrifyClient#listSession takes in
+CollabrifyClient#listSession
 ```javascript
 	client.listSession(['an', 'array', 'of', 'tags']);
 ```
-and returns a promise that get resolved when a list of sessions objects is available.
+Returns a promise that get resolved when a list of sessions objects is available.
+
+Collaborify#joinSession
+```javascript
+	client.joinSession({session: session, password: 'password'});
+```
+Returns a promise that gets resolved when the session is joined.
+
+CollabrifyClient#broadbast
+```javascript
+	client.broadcast({any: 'javascript', object: 1});
+```
+Returns a promise that gets resolved when broadcast is done.
+
+CollabrifyClient#broadbast
+```javascript
+	client.broadcast({any: 'javascript', object: 1});
+```
+Returns a promise that gets resolved when broadcast is done.
+
+CollabrifyClient#leaveSession
+```javascript
+	client.leaveSession();
+```
+Returns a promise that gets resolved when session has been left.
+
+CollabrifyClient#endSession
+```javascript
+	client.leaveSession();
+```
+Returns a promise that gets resolved when session has been left. Can only be called by owner.
+
+CollabrifyClient#preventFurtherJoins
+```javascript
+	client.preventFurtherJoins();
+```
+Returns a promise that gets resolved when a confirmation from the server is recieved. Can only be called by owner.
+
+CollabrifyClient#pauseEvents
+```javascript
+	client.pauseEvents();
+```
+Pauses incoming events.
+
+CollabrifyClient#resumeEvents
+```javascript
+	client.resumeEvents();
+```
+Resumes incoming events.
+
 
 ## Events
 
