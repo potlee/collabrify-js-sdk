@@ -4365,14 +4365,6 @@ CollabrifyClient = (function() {
     return this.eventEmitter.on(e, c);
   };
 
-  CollabrifyClient.prototype.onerror = function(event, callback) {
-    return this.on(event + '_error', callback);
-  };
-
-  CollabrifyClient.prototype.ondone = function(event, callback) {
-    return this.on(event + '_done', callback);
-  };
-
   CollabrifyClient.prototype.subscribeToChannel = function(channel) {
     var socket;
     channel = new goog.appengine.Channel(channel);

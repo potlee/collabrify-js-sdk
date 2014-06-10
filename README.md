@@ -131,6 +131,17 @@ Resumes incoming events.
 #### notifications_error
 #### notifications_close
 
+## Properties
+
+#### CollabrifyClient#session
+This object contains information about the active session. undefined otherwise.
+
+#### CollabrifyClient#participant
+This object contains information about the current user if a session is active. undefined otherwise.
+
+#### CollabrifyClient#submission_registration_id
+The current submission_registration_id.
+
 ## Errors
 All errors except for notification errors are handled through promises.
 
