@@ -145,6 +145,17 @@ The current submission_registration_id.
 ## Errors
 All errors except for notification errors are handled through promises.
 
+## Compatibility
+
+Should work on
+#### Android >= 4.0
+#### iOS safari >= 6.0
+#### IE 11 (Desktop and Windows Phone)
+#### Chrome >= 7
+#### Opera 11.6
+
+
+
 
 
 
