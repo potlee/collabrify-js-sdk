@@ -40,7 +40,7 @@ module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile
 global.host = '166.collabrify-cloud.appspot.com'
 #global.host =  'localhost:9292'
 
-module.exports.chunkSize = 1024*1024*2
+module.exports.chunkSize = 1024*1024*5
 
 module.exports.request = (options) =>
 	options.reject ||= ->
