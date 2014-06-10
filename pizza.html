@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html>
-<head></head>
+<head>
+    <style>
+        #remoteVideos video {
+            height: 100px;
+        }
+        #localVideo {
+            height: 100px;
+        }
+    </style>
+</head>
 <body>
 <div class='label'>Select pizza toppings</div> 
 	<img src="images/circle_icon.png" width="125px">
@@ -20,6 +29,10 @@
 	</ul>
 	commnets :
 	<input id='comments' type='text' value='' onkeypress='change_comments(this)' size='100'>
+	<div></div>
+	<video id='localVideo'></video>
+	<div id="remoteVideos"></div>
+	<script src="http://simplewebrtc.com/latest.js"></script>
 	<script src="https://www.promisejs.org/polyfills/promise-4.0.0.js"></script>
 	<script type='text/javascript' src='./collabrify-3.0.0.js'></script>
 	<script type='text/javascript'>
@@ -81,6 +94,20 @@
 		data.comments = document.getElementById('comments').value
 		c.broadcast(data)
 	};
+
+
+	var webrtc = new SimpleWebRTC({
+	    // the id/element dom element that will hold "our" video
+	    localVideoEl: 'localVideo',
+	    // the id/element dom element that will hold remote videos
+	    remoteVideosEl: 'remoteVideos',
+	    // immediately ask for camera access
+	    autoRequestMedia: true
+	});
+	webrtc.on('readyToCall', function () {
+    	// you can name it anything
+    	webrtc.joinRoom('potleepizza');
+	});
 	</script>
 </body>
 
