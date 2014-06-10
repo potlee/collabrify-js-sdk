@@ -25,7 +25,7 @@ If you do not follow documentation, unexpected behavior will occur, this is norm
 
 Important Files:
 
-bundle.js: Final Deploy script
+collabrify-x.x.x.js: Final Deploy script
 main.js: script that makes plublic CollabrifyClient. This is compiled by browserify to produce bundle.js
 collabrify.coffee: cofiguration, defination of "Collabrify" pseudo-class, helpers
 collabrify_client.coffee: CollabrifyClient

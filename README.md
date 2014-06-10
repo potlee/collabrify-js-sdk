@@ -153,9 +153,3 @@ Should work on
 #### IE 11 (Desktop and Windows Phone)
 #### Chrome >= 7
 #### Opera 11.6
-
-
-
-
-
-

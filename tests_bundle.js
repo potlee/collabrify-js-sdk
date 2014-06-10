@@ -4515,12 +4515,11 @@ CollabrifyClient = (function() {
         return Collabrify.request({
           header: 'PREVENT_FURTHER_JOINS_REQUEST',
           reject: reject,
-          body: new Collabrify.PreventFurtherJoinsReq({
+          body: new Collabrify.PreventFurtherJoinsRequest({
             access_info: _this.accessInfo(),
             session_id: _this.session.session_id
           }),
           ondone: function(buf) {
-            alert('prevented');
             return fulfill();
           }
         });
@@ -12478,29 +12477,6 @@ describe('CollabrifyClient', function() {
       event.data.deep.should.equal('potlee');
       return done();
     });
-    c.on('notifications_error', function(error) {
-      throw error;
-    });
-    return c.onerror('broadcast', function() {
-      throw error;
-    });
-  });
-  it('should start notifications', function(done) {
-    var c;
-    this.timeout(3000);
-    c = new CollabrifyClient({
-      application_id: '4891981239025664',
-      user_id: 'collabrify.tester@gmail.com'
-    });
-    c.createSession({
-      name: 'node_test_session' + Math.random().toString(),
-      password: 'password',
-      tags: ['node_test_session'],
-      startPaused: false
-    });
-    c.on('notifications_start', function() {
-      return done();
-    });
     return c.on('notifications_error', function(error) {
       throw error;
     });
@@ -12609,7 +12585,7 @@ describe('CollabrifyClient', function() {
       return alert(e);
     });
   });
-  return it('should prevent further joins', function(done) {
+  it('should prevent further joins', function(done) {
     var c, tag;
     this.timeout(5000);
     tag = 'node_test_session' + Math.random().toString();
@@ -12632,6 +12608,26 @@ describe('CollabrifyClient', function() {
       return done();
     })["catch"](function(e) {
       return console.log(e);
+    });
+  });
+  return it('should start notifications', function(done) {
+    var c;
+    this.timeout(3000);
+    c = new CollabrifyClient({
+      application_id: '4891981239025664',
+      user_id: 'collabrify.tester@gmail.com'
+    });
+    c.createSession({
+      name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: false
+    });
+    c.on('notifications_start', function() {
+      return done();
+    });
+    return c.on('notifications_error', function(error) {
+      throw error;
     });
   });
 });

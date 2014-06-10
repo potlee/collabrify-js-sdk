@@ -46,24 +46,6 @@ describe 'CollabrifyClient', ->
 			done()
 		c.on 'notifications_error', (error) ->
 			throw error
-		c.onerror 'broadcast', ->
-			throw error
-
-	it 'should start notifications', (done) ->
-		this.timeout(3000)
-		c = new CollabrifyClient
-			application_id: '4891981239025664'
-			user_id: 'collabrify.tester@gmail.com'
-		c.createSession
-			name: 'node_test_session' + Math.random().toString()
-			password: 'password' 
-			tags: ['node_test_session']
-			startPaused: false
-
-		c.on 'notifications_start', ->
-			done()
-		c.on 'notifications_error', (error) ->
-			throw error
 
 	it 'should create session', (done) ->
 		c = new CollabrifyClient
@@ -171,6 +153,22 @@ describe 'CollabrifyClient', ->
 			done()
 		.catch (e) ->
 			console.log e
+
+	it 'should start notifications', (done) ->
+		this.timeout(3000)
+		c = new CollabrifyClient
+			application_id: '4891981239025664'
+			user_id: 'collabrify.tester@gmail.com'
+		c.createSession
+			name: 'node_test_session' + Math.random().toString()
+			password: 'password' 
+			tags: ['node_test_session']
+			startPaused: false
+
+		c.on 'notifications_start', ->
+			done()
+		c.on 'notifications_error', (error) ->
+			throw error
 
 	# it 'should be able to prevent further joins', (done) ->
 	# 	@client.createSession

@@ -300,12 +300,11 @@ class CollabrifyClient
 				header: 'PREVENT_FURTHER_JOINS_REQUEST'
 				reject: reject
 
-				body: new Collabrify.PreventFurtherJoinsReq
+				body: new Collabrify.PreventFurtherJoinsRequest
 					access_info: @accessInfo()
 					session_id: @session.session_id
 
 				ondone: (buf) =>
-					alert 'prevented'
 					fulfill()
 					#console.log Collabrify.RequestHeader.decodeDelimited(buf)
 
