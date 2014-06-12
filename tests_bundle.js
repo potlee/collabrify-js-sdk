@@ -4321,7 +4321,7 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.newSessionHandler = function(buf, request_type, header) {
-    var p, response, user, _i, _len, _ref;
+    var p, participantsHash, response, user, _i, _len, _ref;
     user = request_type === 'create' ? 'owner' : 'participant';
     if (request_type === 'create') {
       response = Collabrify.CreateSessionResponse.decodeDelimited(buf);
@@ -4330,13 +4330,13 @@ CollabrifyClient = (function() {
     }
     this.participant = response[user];
     this.session = response.session;
-    this.participantsHash = {};
+    participantsHash = {};
     _ref = this.session.participant;
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
       p = _ref[_i];
-      this.participantsHash[p.participant_id] = p;
+      participantsHash[p.participant_id] = p;
     }
-    this.session.participant = this.participantsHash;
+    this.session.participant = participantsHash;
     this.timeAdjustment = Date.now() - header.timestamp;
     return this.subscribeToChannel(response[user].notification_id);
   };
@@ -4376,7 +4376,7 @@ CollabrifyClient = (function() {
     })(this);
     socket.onmessage = (function(_this) {
       return function(message) {
-        var addEvent, addParticipant, event, notification, participant_id, removeParticipant, response, _i, _len, _ref;
+        var addEvent, addParticipant, event, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
         if (!_this.session) {
           return;
         }
@@ -4414,9 +4414,11 @@ CollabrifyClient = (function() {
         if (notification.notification_message_type === 5) {
           _this.catchup_participant_ids = {};
           response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload);
+          participantsHash = {};
           _ref = response.participant_id;
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             participant_id = _ref[_i];
+            participantsHash[participant_id] = _this.session.participant[participant_id];
             if (!_this.session.participant[participant_id]) {
               _this.catchup_participant_ids[participant_id] = true;
               Collabrify.request({
@@ -4435,6 +4437,7 @@ CollabrifyClient = (function() {
               });
             }
           }
+          _this.session.participant = participantsHash;
           return Collabrify.request({
             header: 'GET_EVENT_BATCH_REQUEST',
             body: new Collabrify.GetEventBatchRequest({

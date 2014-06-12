@@ -151,9 +151,9 @@ class CollabrifyClient
 
 		@participant = response[user]
 		@session = response.session
-		@participantsHash = {}
-		(@participantsHash[p.participant_id] = p) for p in @session.participant
-		@session.participant = @participantsHash
+		participantsHash = {}
+		(participantsHash[p.participant_id] = p) for p in @session.participant
+		@session.participant = participantsHash
 
 		@timeAdjustment = Date.now() - header.timestamp
 		@subscribeToChannel(response[user].notification_id)
@@ -218,7 +218,10 @@ class CollabrifyClient
 			if notification.notification_message_type == 5 #Collabrify.NotificationMessageType['ON_CHANNEL_CONNECTED_NOTIFICATION']
 				@catchup_participant_ids = {}
 				response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload)
+				participantsHash = {}
+				
 				for participant_id in response.participant_id
+					participantsHash[participant_id] = @session.participant[participant_id]
 					unless @session.participant[participant_id]
 						@catchup_participant_ids[participant_id] = true
 						Collabrify.request
@@ -232,6 +235,8 @@ class CollabrifyClient
 								body = Collabrify.GetParticipantResponse.decodeDelimited(buf)
 								if @catchup_participant_ids[participant_id]
 									@session.participant[participant_id] = body.participant[0]
+				@session.participant = participantsHash
+				# 	for participant in @session.participant
 
 
 				Collabrify.request

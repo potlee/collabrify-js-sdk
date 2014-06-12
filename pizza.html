@@ -51,12 +51,12 @@
 	c.createSession({
 		name: 'pizza_demo5',// + Math.random().toString(),
 		password: 'password',
-		tags: ['pizzza2'],
+		tags: ['pizzza3'],
 		startPaused: false
 	})
 	.catch(function(){
 		console.log('listing sessions');
-		c.listSessions(['pizzza2'])
+		c.listSessions(['pizzza3'])
 		.then(function(sessions){
 			console.log(sessions);
 			c.joinSession({session:sessions[0], password: 'password'});
