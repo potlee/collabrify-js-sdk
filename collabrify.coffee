@@ -27,8 +27,8 @@ module.exports.AddParticipantRequest = builder.build 'Request_AddParticipant_PB'
 module.exports.AddParticipantResponse = builder.build 'Response_AddParticipant_PB'
 module.exports.GetParticipantRequest = builder.build 'Request_GetParticipant_PB'
 module.exports.GetParticipantResponse = builder.build 'Response_GetParticipant_PB'
-module.exports.GetEventRequest = builder.build 'Request_GetEvent_PB'
-module.exports.GetEventResponse = builder.build 'Response_GetEvent_PB'
+module.exports.GetEventBatchRequest = builder.build 'Request_GetEventBatch_PB'
+module.exports.GetEventBatchResponse = builder.build 'Response_GetEventBatch_PB'
 module.exports.RemoveParticipantRequest = builder.build 'Request_RemoveParticipant_PB'
 module.exports.RemoveParticipantResponse = builder.build 'Response_RemoveParticipant_PB'
 module.exports.EndSessionRequest = builder.build 'Request_EndSession_PB'
@@ -37,10 +37,11 @@ module.exports.AddToBaseFileRequest = builder.build 'Request_AddToBaseFile_PB'
 module.exports.AddToBaseFileResponse = builder.build 'Response_AddToBaseFile_PB'
 module.exports.GetFromBaseFileRequest = builder.build 'Request_GetFromBaseFile_PB'
 module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile_PB'
+module.exports.Event = builder.build 'CollabrifyEvent_PB'
 global.host = '166.collabrify-cloud.appspot.com'
 #global.host =  'localhost:9292'
 
-module.exports.chunkSize = 1024*1024*5
+module.exports.chunkSize = 1024*1024*30
 
 module.exports.request = (options) =>
 	options.reject ||= ->

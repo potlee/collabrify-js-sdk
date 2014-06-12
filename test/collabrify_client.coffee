@@ -67,7 +67,7 @@ describe 'CollabrifyClient', ->
 			alert 'internet turned off'
 
 	it 'should create session with basefile and join it', (done) ->
-		@timeout 5000
+		@timeout 10000
 		tag = 'node_test_session' + Math.random().toString()
 		c = new CollabrifyClient
 			application_id: '4891981239025664'
@@ -77,7 +77,7 @@ describe 'CollabrifyClient', ->
 			password: 'password' 
 			tags: [tag]
 			startPaused: false
-			baseFile: {this: 'is', a: 'basefile'}
+			baseFile: {aa: Array(20).join('a'), bb: Array(1024*900).join('b'), a: 'basefile'}
 		.then (session) ->
 			c.listSessions [tag]	
 		.then (list) ->
@@ -86,9 +86,11 @@ describe 'CollabrifyClient', ->
 				password: 'password'
 		.then (session) ->
 			session.baseFile.a.should.equal 'basefile'
+			console.log session.baseFile
+			#session.baseFile.aa[999].should.equal 'p'
 			done()
 		.catch (e) ->
-			throw e
+			alert e
 
 	it 'should look for sessions with tags', (done) ->
 		@timeout 4000

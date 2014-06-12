@@ -27,20 +27,21 @@ class CollabrifyClient
 
 	broadcast: (message, event_type) ->
 		new Promise (fulfill, reject) =>
-			messageByteBuffer = new ByteBuffer()
-			messageByteBuffer.writeJSON message
-			messageBuffer = messageByteBuffer.toBuffer()
+			#messageByteBuffer = new ByteBuffer()
+			#messageByteBuffer.writeJSON message
+			#messageBuffer = messageByteBuffer.toBuffer()
+			buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer()
 			Collabrify.requestSynch
 				header: 'ADD_EVENT_REQUEST'
 				reject: reject
 
 				body: new Collabrify.AddEventRequest
 					access_info: @accessInfo()
-					number_of_bytes_to_follow: messageBuffer.byteLength
+					number_of_bytes_to_follow: buffer.byteLength#messageBuffer.byteLength
 					submission_registration_id: @submission_registration_id++
 					event_type: event_type
 
-				message: messageBuffer
+				message: buffer#messageBuffer
 
 				ondone: (buf) =>
 					event = Collabrify.AddEventResponse.decodeDelimited(buf)
@@ -53,13 +54,11 @@ class CollabrifyClient
 
 	createSession: (sessionProperties) ->
 		new Promise (fullfill, reject) =>
-			messageByteBuffer = new ByteBuffer()
-			@basefile_chunks = []
+			basefile_chunks = []
 			if sessionProperties.baseFile
-				messageByteBuffer.writeJSON sessionProperties.baseFile
-				messageBuffer = messageByteBuffer.toBuffer()
+				messageBuffer = ByteBuffer.wrap(JSON.stringify(sessionProperties.baseFile)).toBuffer()
 				for i in [0...Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize)]
-					@basefile_chunks.push(messageBuffer.slice(
+					basefile_chunks.push(messageBuffer.slice(
 						i * Collabrify.chunkSize
 						Math.min((i+1) * Collabrify.chunkSize, messageBuffer.byteLength)
 					))
@@ -76,20 +75,21 @@ class CollabrifyClient
 					session_name: sessionProperties.name
 					session_password: @sessionPassword
 					owner_display_name: @display_name
-					number_of_bytes_to_follow: if @basefile_chunks[0] then @basefile_chunks[0].byteLength
-					flag__session_has_base_file: @basefile_chunks.length
-					flag__base_file_complete: (@basefile_chunks.length < 2)
+					number_of_bytes_to_follow: if basefile_chunks[0] then basefile_chunks[0].byteLength
+					flag__session_has_base_file: basefile_chunks.length
+					flag__base_file_complete: (basefile_chunks.length < 2)
 					owner_notification_medium_type: 1
 					participant_limit: sessionProperties.participantLimit || 0
 
-				message: @basefile_chunks[0]
+				message: basefile_chunks[0]
 
 				ondone: (buf, header) =>
 					@newSessionHandler(buf, 'create', header)
-					unless @basefile_chunks.length > 1
+					unless basefile_chunks.length >= 2
 						fullfill(@session)
-					for chunk, i in @basefile_chunks[1..]
-						is_last = (i == (@basefile_chunks.length - 2))
+					for chunk, i in basefile_chunks[1..]
+						is_last = (chunk == basefile_chunks[basefile_chunks.length-1])
+						console.log 'sending part ' + i
 						Collabrify.requestSynch
 							header: 'ADD_TO_BASE_FILE_REQUEST'
 							reject: reject
@@ -102,6 +102,7 @@ class CollabrifyClient
 							message: chunk
 
 							ondone: (buf) =>
+								console.log is_last
 								if is_last
 									fullfill(@session)
 
@@ -136,7 +137,7 @@ class CollabrifyClient
 
 							ondone: (buf) =>
 								response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf)
-								@session.baseFile = buf.readJSON()
+								@session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()))
 								fulfill(@session)
 					else
 						fulfill(@session)
@@ -194,7 +195,7 @@ class CollabrifyClient
 					addEvent.event.submission_registration_id = -1
 
 				event.author = @session.participant[event.author_participant_id]
-				event.data = event.payload.readJSON()
+				event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()))
 				addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
 
 				@eventEmitter.emitOrdered 'event', event
@@ -228,25 +229,27 @@ class CollabrifyClient
 								participant_id: [participant_id]
 
 							ondone: (buf) =>
-								console.log 'fetching prticipants done'
 								body = Collabrify.GetParticipantResponse.decodeDelimited(buf)
 								if @catchup_participant_ids[participant_id]
 									@session.participant[participant_id] = body.participant[0]
 
-				@eventEmitter.nextEvent = response.current_order_id.low + 1
-				# while @eventEmitter.nextEvent < body.current_order_id.low
-				# 	console.log 'catchup'
-				# 	Collabrify.request
-				# 		header: new Collabrify.RequestHeader
-				# 			request_type: Collabrify.RequestType['GET_EVENT_REQUEST']
-				# 		body: new Collabrify.GetEventRequest
-				# 			access_info: @accessInfo()
-				# 			order_id: @eventEmitter.nextEvent
-				# 		ondone: (buf) ->
-				# 			header = Collabrify.ResponseHeader.decodeDelimited(buf)
-				# 			if header.success_flag
-				# 				body = Collabrify.GetEventResponse.decodeDelimited(buf)
-				# 				@eventEmitter.emitOrdered 'event', body.event, event.order_id
+
+				Collabrify.request
+					header: 'GET_EVENT_BATCH_REQUEST'
+
+					body: new Collabrify.GetEventBatchRequest
+						access_info: @accessInfo()
+						starting_order_id: @eventEmitter.nextEvent
+						ending_order_id: response.current_order_id.low
+					
+					ondone: (buf) =>
+						body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
+						if body.number_of_events_to_follow
+							for i in [1..body.number_of_events_to_follow] 
+								event = Collabrify.Event.decodeDelimited(buf)
+								event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()))
+								@eventEmitter.emitOrdered 'event', event, event.order_id
+				#@eventEmitter.nextEvent = response.current_order_id.low + 1
 
 		socket.onerror = (error) =>
 			@eventEmitter.emit 'notifications_error', error

@@ -27,8 +27,6 @@
 	  <li><input checked="true" type='checkbox' onclick='toggle_topping(this)' id='red_peppers' value='red_peppers' title='Green Peppers'/>Red Peppers</li> 
 	  <li><input checked="true" type='checkbox' onclick='toggle_topping(this)' id='xcheese' value='xcheese' title='Extra Cheese'/>Extra Cheese</li> 
 	</ul>
-	commnets :
-	<input id='comments' type='text' value='' onkeypress='change_comments(this)' size='100'>
 	<div></div>
 	<video id='localVideo'></video>
 	<div id="remoteVideos"></div>
@@ -44,22 +42,21 @@
 			onions: true,
 			red_peppers: true,
 			xcheese: true
-		},
-		comments: ''
+		}
 	};
 	var c = new CollabrifyClient({
 		application_id: '4891981239025664',
 		user_id: 'collabrify.tester@gmail.com'
 	});
 	c.createSession({
-		name: 'pizza_demo',// + Math.random().toString(),
+		name: 'pizza_demo5',// + Math.random().toString(),
 		password: 'password',
-		tags: ['tag8'],
+		tags: ['pizzza2'],
 		startPaused: false
 	})
 	.catch(function(){
 		console.log('listing sessions');
-		c.listSessions(['tag8'])
+		c.listSessions(['pizzza2'])
 		.then(function(sessions){
 			console.log(sessions);
 			c.joinSession({session:sessions[0], password: 'password'});
@@ -67,34 +64,25 @@
 	});
 
 	c.on('event',function(event){
-		console.log(event);
-		data = event.data
-		for(var key in data.toppings){
+		for(var key in event.data.toppings){
+			data.toppings[key] = event.data.toppings[key]
 			document.getElementById(key).checked = data.toppings[key]
 			if(document.getElementById(key+'_image'))
 				document.getElementById(key+'_image').style.visibility = (data.toppings[key] ? "" : "hidden")
 		}
-		document.getElementById('comments').value = data.comments
-
 	});
 
 	c.on('user_joined', function(user){
 		alert(user);
 	});
 
-	// change_comments = function(com){
-	// 	alert('change comments');
-	// 	data.comments = com.value;
-	// 	c.broadcast(data)
-	// }
-
 	toggle_topping = function (cb) {
-		document.getElementById(cb.value+'_image').style.visibility = (cb.checked ? "": "hidden")
-		data.toppings[cb.value] = cb.checked
-		data.comments = document.getElementById('comments').value
-		c.broadcast(data)
+		document.getElementById(cb.value+'_image').style.visibility = (cb.checked ? "": "hidden");
+		data.toppings[cb.value] = cb.checked;
+		payload = {toppings:{}};
+		payload.toppings[cb.value] = cb.checked;
+		c.broadcast(payload);
 	};
-
 
 	var webrtc = new SimpleWebRTC({
 	    // the id/element dom element that will hold "our" video
@@ -106,7 +94,7 @@
 	});
 	webrtc.on('readyToCall', function () {
     	// you can name it anything
-    	webrtc.joinRoom('potleepizza');
+    	webrtc.joinRoom('potleepizza-5279308758230457');
 	});
 	</script>
 </body>
