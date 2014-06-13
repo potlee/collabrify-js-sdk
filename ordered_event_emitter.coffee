@@ -11,7 +11,7 @@ class OrderedEventEmitter extends EventEmitter
 			@nextEvent = @nextEvent + 1
 			while @orderedEvents[@nextEvent]
 				@emit event, @orderedEvents[@nextEvent]
-				@orderedEvents[@nextEvent] = null
+				delete @orderedEvents[@nextEvent]
 				@nextEvent = @nextEvent + 1
 		else
 			@orderedEvents[order_id.low] = argument

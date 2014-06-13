@@ -4061,53 +4061,58 @@ module.exports.Event = builder.build('CollabrifyEvent_PB');
 
 global.host = '166.collabrify-cloud.appspot.com';
 
-module.exports.chunkSize = 1024;
+module.exports.chunkSize = 1024 * 1024 * 30;
 
 module.exports.request = (function(_this) {
   return function(options) {
-    var callback, client, http_options, request;
+    var callback, client, e, http_options, request;
     options.reject || (options.reject = function() {});
-    client = _this.client;
-    callback = function(res) {
-      if (res.setEncoding) {
-        res.setEncoding('base64');
-      }
-      res.on('data', function(chunk) {
-        var buf, header;
-        buf = ByteBuffer.wrap(chunk);
-        header = ResponseHeader.decodeDelimited(buf);
-        if (header.success_flag) {
-          return options.ondone(buf, header);
-        } else {
-          return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
+    try {
+      client = _this.client;
+      callback = function(res) {
+        if (res.setEncoding) {
+          res.setEncoding('base64');
         }
-      });
-      return res.on('error', function(e) {
+        res.on('data', function(chunk) {
+          var buf, header;
+          buf = ByteBuffer.wrap(chunk);
+          header = ResponseHeader.decodeDelimited(buf);
+          if (header.success_flag) {
+            return options.ondone(buf, header);
+          } else {
+            return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
+          }
+        });
+        return res.on('error', function(e) {
+          return options.reject(e);
+        });
+      };
+      http_options = {
+        host: global.host,
+        path: '/request',
+        method: 'POST',
+        withCredentials: false
+      };
+      request = http.request(http_options, callback);
+      if (request.xhr) {
+        request.xhr.responseType = 'arraybuffer';
+      }
+      request.write((new RequestHeader({
+        request_type: RequestType[options.header],
+        include_timestamp_in_response: options.include_timestamp_in_response
+      })).encodeDelimited().toBuffer());
+      request.write(options.body.encodeDelimited().toBuffer());
+      if (options.message != null) {
+        request.write(options.message);
+      }
+      request.on('error', function(e) {
         return options.reject(e);
       });
-    };
-    http_options = {
-      host: global.host,
-      path: '/request',
-      method: 'POST',
-      withCredentials: false
-    };
-    request = http.request(http_options, callback);
-    if (request.xhr) {
-      request.xhr.responseType = 'arraybuffer';
+      return request.end();
+    } catch (_error) {
+      e = _error;
+      return options.reject(e);
     }
-    request.write((new RequestHeader({
-      request_type: RequestType[options.header],
-      include_timestamp_in_response: options.include_timestamp_in_response
-    })).encodeDelimited().toBuffer());
-    request.write(options.body.encodeDelimited().toBuffer());
-    if (options.message != null) {
-      request.write(options.message);
-    }
-    request.on('error', function(e) {
-      return alert('this shoud happen');
-    });
-    return request.end();
   };
 })(this);
 
@@ -4131,6 +4136,12 @@ requestSynch = (function(_this) {
   };
 })(this);
 
+ByteBuffer.prototype.toJson = function() {
+  return JSON.parse(this.readUTF8StringBytes(this.remaining()));
+};
+
+module.exports.ByteBuffer = ByteBuffer;
+
 module.exports.requestSynch = requestSynch;
 
 
@@ -4141,9 +4152,9 @@ var ByteBuffer, Collabrify, CollabrifyClient, EventEmitter, goog,
 
 EventEmitter = require('./ordered_event_emitter');
 
-ByteBuffer = require('bytebuffer');
-
 Collabrify = require('./collabrify');
+
+ByteBuffer = Collabrify.ByteBuffer;
 
 goog = require('./channel');
 
@@ -4161,7 +4172,15 @@ CollabrifyClient = (function() {
     this.eventEmitter = new EventEmitter();
     Collabrify.request.client = this;
     this.submission_registration_id = 1;
-    this.warmupRequest();
+    this.warmupRequest().then((function(_this) {
+      return function() {
+        return _this.eventEmitter.emit('ready');
+      };
+    })(this))["catch"]((function(_this) {
+      return function(e) {
+        return _this.eventEmitter.emit('error');
+      };
+    })(this));
   }
 
   CollabrifyClient.prototype.accessInfo = function() {
@@ -4213,14 +4232,12 @@ CollabrifyClient = (function() {
   CollabrifyClient.prototype.createSession = function(sessionProperties) {
     return new Promise((function(_this) {
       return function(fullfill, reject) {
-        var i, messageBuffer, messageByteBuffer, _i, _ref;
-        messageByteBuffer = new ByteBuffer();
-        _this.basefile_chunks = [];
+        var basefile_chunks, i, messageBuffer, _i, _ref;
+        basefile_chunks = [];
         if (sessionProperties.baseFile) {
-          messageByteBuffer.writeJSON(sessionProperties.baseFile);
-          messageBuffer = messageByteBuffer.toBuffer();
+          messageBuffer = ByteBuffer.wrap(JSON.stringify(sessionProperties.baseFile)).toBuffer();
           for (i = _i = 0, _ref = Math.ceil(messageBuffer.byteLength / Collabrify.chunkSize); 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
-            _this.basefile_chunks.push(messageBuffer.slice(i * Collabrify.chunkSize, Math.min((i + 1) * Collabrify.chunkSize, messageBuffer.byteLength)));
+            basefile_chunks.push(messageBuffer.slice(i * Collabrify.chunkSize, Math.min((i + 1) * Collabrify.chunkSize, messageBuffer.byteLength)));
           }
         }
         _this.sessionPassword = sessionProperties.password;
@@ -4234,25 +4251,24 @@ CollabrifyClient = (function() {
             session_name: sessionProperties.name,
             session_password: _this.sessionPassword,
             owner_display_name: _this.display_name,
-            number_of_bytes_to_follow: _this.basefile_chunks[0] ? _this.basefile_chunks[0].byteLength : void 0,
-            flag__session_has_base_file: _this.basefile_chunks.length,
-            flag__base_file_complete: _this.basefile_chunks.length < 2,
+            number_of_bytes_to_follow: basefile_chunks[0] ? basefile_chunks[0].byteLength : void 0,
+            flag__session_has_base_file: basefile_chunks.length,
+            flag__base_file_complete: basefile_chunks.length < 2,
             owner_notification_medium_type: 1,
             participant_limit: sessionProperties.participantLimit || 0
           }),
-          message: _this.basefile_chunks[0],
+          message: basefile_chunks[0],
           ondone: function(buf, header) {
             var chunk, is_last, _j, _len, _ref1, _results;
             _this.newSessionHandler(buf, 'create', header);
-            if (!(_this.basefile_chunks.length > 1)) {
+            if (!(basefile_chunks.length >= 2)) {
               fullfill(_this.session);
             }
-            _ref1 = _this.basefile_chunks.slice(1);
+            _ref1 = basefile_chunks.slice(1);
             _results = [];
             for (i = _j = 0, _len = _ref1.length; _j < _len; i = ++_j) {
               chunk = _ref1[i];
-              is_last = i === (_this.basefile_chunks.length - 2);
-              console.log('sending part 2');
+              is_last = chunk === basefile_chunks[basefile_chunks.length - 1];
               _results.push(Collabrify.requestSynch({
                 header: 'ADD_TO_BASE_FILE_REQUEST',
                 reject: reject,
@@ -4263,6 +4279,7 @@ CollabrifyClient = (function() {
                 }),
                 message: chunk,
                 ondone: function(buf) {
+                  console.log(is_last);
                   if (is_last) {
                     return fullfill(_this.session);
                   }
@@ -4308,7 +4325,7 @@ CollabrifyClient = (function() {
                 ondone: function(buf) {
                   var response;
                   response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
-                  _this.session.baseFile = buf.readJSON();
+                  _this.session.baseFile = buf.toJSON();
                   return fulfill(_this.session);
                 }
               });
@@ -4322,7 +4339,7 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.newSessionHandler = function(buf, request_type, header) {
-    var p, response, user, _i, _len, _ref;
+    var p, participantsHash, response, user, _i, _len, _ref;
     user = request_type === 'create' ? 'owner' : 'participant';
     if (request_type === 'create') {
       response = Collabrify.CreateSessionResponse.decodeDelimited(buf);
@@ -4331,13 +4348,13 @@ CollabrifyClient = (function() {
     }
     this.participant = response[user];
     this.session = response.session;
-    this.participantsHash = {};
+    participantsHash = {};
     _ref = this.session.participant;
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
       p = _ref[_i];
-      this.participantsHash[p.participant_id] = p;
+      participantsHash[p.participant_id] = p;
     }
-    this.session.participant = this.participantsHash;
+    this.session.participant = participantsHash;
     this.timeAdjustment = Date.now() - header.timestamp;
     return this.subscribeToChannel(response[user].notification_id);
   };
@@ -4377,7 +4394,7 @@ CollabrifyClient = (function() {
     })(this);
     socket.onmessage = (function(_this) {
       return function(message) {
-        var addEvent, addParticipant, event, notification, participant_id, removeParticipant, response, _i, _len, _ref;
+        var addEvent, addParticipant, event, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
         if (!_this.session) {
           return;
         }
@@ -4390,7 +4407,12 @@ CollabrifyClient = (function() {
             addEvent.event.submission_registration_id = -1;
           }
           event.author = _this.session.participant[event.author_participant_id];
-          event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()));
+          event.data = function() {
+            return event.payload.toJson();
+          };
+          event.rawData = function() {
+            return event.payload.toBuffer();
+          };
           addEvent.event.elapsed = function() {
             return Date.now() - _this.timeAdjustment - event.timestamp;
           };
@@ -4415,9 +4437,11 @@ CollabrifyClient = (function() {
         if (notification.notification_message_type === 5) {
           _this.catchup_participant_ids = {};
           response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload);
+          participantsHash = {};
           _ref = response.participant_id;
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             participant_id = _ref[_i];
+            participantsHash[participant_id] = _this.session.participant[participant_id];
             if (!_this.session.participant[participant_id]) {
               _this.catchup_participant_ids[participant_id] = true;
               Collabrify.request({
@@ -4436,6 +4460,7 @@ CollabrifyClient = (function() {
               });
             }
           }
+          _this.session.participant = participantsHash;
           return Collabrify.request({
             header: 'GET_EVENT_BATCH_REQUEST',
             body: new Collabrify.GetEventBatchRequest({
@@ -4450,7 +4475,12 @@ CollabrifyClient = (function() {
                 _results = [];
                 for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
                   event = Collabrify.Event.decodeDelimited(buf);
-                  event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()));
+                  event.data = function() {
+                    return event.payload.toJson();
+                  };
+                  event.rawData = function() {
+                    return event.payload.toBuffer();
+                  };
                   _results.push(_this.eventEmitter.emitOrdered('event', event, event.order_id));
                 }
                 return _results;
@@ -4462,7 +4492,7 @@ CollabrifyClient = (function() {
     })(this);
     socket.onerror = (function(_this) {
       return function(error) {
-        return _this.eventEmitter.emit('notifications_error', error);
+        return _this.eventEmitter.emit('error', new Error(error.description || "notificaitons error"));
       };
     })(this);
     return socket.onclose = (function(_this) {
@@ -4473,15 +4503,18 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.warmupRequest = function() {
-    return Collabrify.request({
-      header: 'WARMUP_REQUEST',
-      body: new Collabrify.WarmupRequest,
-      ondone: (function(_this) {
-        return function() {
-          return _this.eventEmitter.emit('ready');
-        };
-      })(this)
-    });
+    return new Promise((function(_this) {
+      return function(fullfill, reject) {
+        return Collabrify.request({
+          header: 'WARMUP_REQUEST',
+          body: new Collabrify.WarmupRequest,
+          reject: reject,
+          ondone: function() {
+            return fullfill();
+          }
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.leaveSession = function() {
@@ -4588,7 +4621,7 @@ CollabrifyClient = (function() {
 module.exports = CollabrifyClient;
 
 
-},{"./channel":2,"./collabrify":3,"./ordered_event_emitter":8,"bytebuffer":6}],5:[function(require,module,exports){
+},{"./channel":2,"./collabrify":3,"./ordered_event_emitter":8}],5:[function(require,module,exports){
 CollabrifyClient = require('./collabrify_client')
 ByteBuffer = require('bytebuffer')
 
@@ -7883,7 +7916,7 @@ OrderedEventEmitter = (function(_super) {
       _results = [];
       while (this.orderedEvents[this.nextEvent]) {
         this.emit(event, this.orderedEvents[this.nextEvent]);
-        this.orderedEvents[this.nextEvent] = null;
+        delete this.orderedEvents[this.nextEvent];
         _results.push(this.nextEvent = this.nextEvent + 1);
       }
       return _results;

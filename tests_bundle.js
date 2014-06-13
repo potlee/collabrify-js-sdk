@@ -4131,6 +4131,12 @@ requestSynch = (function(_this) {
   };
 })(this);
 
+ByteBuffer.prototype.toJson = function() {
+  return JSON.parse(this.readUTF8StringBytes(this.remaining()));
+};
+
+module.exports.ByteBuffer = ByteBuffer;
+
 module.exports.requestSynch = requestSynch;
 
 
@@ -4141,9 +4147,9 @@ var ByteBuffer, Collabrify, CollabrifyClient, EventEmitter, goog,
 
 EventEmitter = require('./ordered_event_emitter');
 
-ByteBuffer = require('bytebuffer');
-
 Collabrify = require('./collabrify');
+
+ByteBuffer = Collabrify.ByteBuffer;
 
 goog = require('./channel');
 
@@ -4307,7 +4313,7 @@ CollabrifyClient = (function() {
                 ondone: function(buf) {
                   var response;
                   response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
-                  _this.session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()));
+                  _this.session.baseFile = buf.toJSON();
                   return fulfill(_this.session);
                 }
               });
@@ -4389,7 +4395,12 @@ CollabrifyClient = (function() {
             addEvent.event.submission_registration_id = -1;
           }
           event.author = _this.session.participant[event.author_participant_id];
-          event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()));
+          event.data = function() {
+            return event.payload.toJson();
+          };
+          event.rawData = function() {
+            return event.payload.toBuffer();
+          };
           addEvent.event.elapsed = function() {
             return Date.now() - _this.timeAdjustment - event.timestamp;
           };
@@ -4452,7 +4463,12 @@ CollabrifyClient = (function() {
                 _results = [];
                 for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
                   event = Collabrify.Event.decodeDelimited(buf);
-                  event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()));
+                  event.data = function() {
+                    return event.payload.toJson();
+                  };
+                  event.rawData = function() {
+                    return event.payload.toBuffer();
+                  };
                   _results.push(_this.eventEmitter.emitOrdered('event', event, event.order_id));
                 }
                 return _results;
@@ -4590,7 +4606,7 @@ CollabrifyClient = (function() {
 module.exports = CollabrifyClient;
 
 
-},{"./channel":2,"./collabrify":3,"./ordered_event_emitter":39,"bytebuffer":5}],5:[function(require,module,exports){
+},{"./channel":2,"./collabrify":3,"./ordered_event_emitter":39}],5:[function(require,module,exports){
 /*
  Copyright 2013 Daniel Wirtz <dcode@dcode.io>
 
@@ -12415,7 +12431,7 @@ OrderedEventEmitter = (function(_super) {
       _results = [];
       while (this.orderedEvents[this.nextEvent]) {
         this.emit(event, this.orderedEvents[this.nextEvent]);
-        this.orderedEvents[this.nextEvent] = null;
+        delete this.orderedEvents[this.nextEvent];
         _results.push(this.nextEvent = this.nextEvent + 1);
       }
       return _results;

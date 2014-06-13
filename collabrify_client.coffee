@@ -1,7 +1,6 @@
-
 EventEmitter = require('./ordered_event_emitter');
-ByteBuffer = require 'bytebuffer'
 Collabrify = require './collabrify'
+ByteBuffer = Collabrify.ByteBuffer
 goog = require './channel'
 class CollabrifyClient
 	constructor: (options) ->
@@ -14,6 +13,10 @@ class CollabrifyClient
 		Collabrify.request.client = this
 		@submission_registration_id = 1
 		@warmupRequest()
+		.then =>
+			@eventEmitter.emit 'ready'
+		.catch (e) =>
+			@eventEmitter.emit 'error'
 
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
@@ -89,7 +92,6 @@ class CollabrifyClient
 						fullfill(@session)
 					for chunk, i in basefile_chunks[1..]
 						is_last = (chunk == basefile_chunks[basefile_chunks.length-1])
-						console.log 'sending part ' + i
 						Collabrify.requestSynch
 							header: 'ADD_TO_BASE_FILE_REQUEST'
 							reject: reject
@@ -137,7 +139,7 @@ class CollabrifyClient
 
 							ondone: (buf) =>
 								response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf)
-								@session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()))
+								@session.baseFile = buf.toJSON()
 								fulfill(@session)
 					else
 						fulfill(@session)
@@ -195,7 +197,8 @@ class CollabrifyClient
 					addEvent.event.submission_registration_id = -1
 
 				event.author = @session.participant[event.author_participant_id]
-				event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()))
+				event.data = -> event.payload.toJson()
+				event.rawData = -> event.payload.toBuffer()
 				addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
 
 				@eventEmitter.emitOrdered 'event', event
@@ -238,7 +241,6 @@ class CollabrifyClient
 				@session.participant = participantsHash
 				# 	for participant in @session.participant
 
-
 				Collabrify.request
 					header: 'GET_EVENT_BATCH_REQUEST'
 
@@ -252,22 +254,25 @@ class CollabrifyClient
 						if body.number_of_events_to_follow
 							for i in [1..body.number_of_events_to_follow] 
 								event = Collabrify.Event.decodeDelimited(buf)
-								event.data = JSON.parse(event.payload.readUTF8StringBytes(event.payload.remaining()))
+								event.data = -> event.payload.toJson()
+								event.rawData = -> event.payload.toBuffer()
 								@eventEmitter.emitOrdered 'event', event, event.order_id
 				#@eventEmitter.nextEvent = response.current_order_id.low + 1
 
 		socket.onerror = (error) =>
-			@eventEmitter.emit 'notifications_error', error
-		
+			@eventEmitter.emit 'error', new Error(error.description || "notificaitons error")
+	
 		socket.onclose = (close) =>
 			@eventEmitter.emit 'notifications_close'
 
-	warmupRequest: -> 
-		Collabrify.request
-			header: 'WARMUP_REQUEST'
-			body: new Collabrify.WarmupRequest
-			ondone: =>
-				@eventEmitter.emit 'ready'
+	warmupRequest: ->
+		new Promise (fullfill, reject) =>
+			Collabrify.request
+				header: 'WARMUP_REQUEST'
+				body: new Collabrify.WarmupRequest
+				reject: reject
+				ondone: =>
+					fullfill() #@eventEmitter.emit 'ready'
 	
 	leaveSession: ->
 		new Promise (fulfill, reject) =>

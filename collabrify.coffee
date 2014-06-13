@@ -39,43 +39,45 @@ module.exports.GetFromBaseFileRequest = builder.build 'Request_GetFromBaseFile_P
 module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile_PB'
 module.exports.Event = builder.build 'CollabrifyEvent_PB'
 global.host = '166.collabrify-cloud.appspot.com'
-#global.host =  'localhost:9292'
 
 module.exports.chunkSize = 1024*1024*30
 
 module.exports.request = (options) =>
 	options.reject ||= ->
-	client = @client
-	callback = (res) ->
-		res.setEncoding('base64') if res.setEncoding
-		res.on 'data', (chunk) ->
-			buf = ByteBuffer.wrap(chunk)#, 'base64')
-			header = ResponseHeader.decodeDelimited(buf)
-			if header.success_flag
-				options.ondone(buf, header)
-			else
-				options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
+	try
+		client = @client
+		callback = (res) ->
+			res.setEncoding('base64') if res.setEncoding
+			res.on 'data', (chunk) ->
+				buf = ByteBuffer.wrap(chunk)#, 'base64')
+				header = ResponseHeader.decodeDelimited(buf)
+				if header.success_flag
+					options.ondone(buf, header)
+				else
+					options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
 
-		res.on 'error', (e) ->
-			options.reject e
-	
-	http_options =
-		host: global.host
-		path: '/request'
-		method: 'POST'
-		withCredentials: false
-	request = http.request(http_options, callback)
+			res.on 'error', (e) ->
+				options.reject e
+		
+		http_options =
+			host: global.host
+			path: '/request'
+			method: 'POST'
+			withCredentials: false
+		request = http.request(http_options, callback)
 
-	request.xhr.responseType = 'arraybuffer' if request.xhr
-	request.write (new RequestHeader
-		request_type: RequestType[options.header]
-		include_timestamp_in_response: options.include_timestamp_in_response
-	).encodeDelimited().toBuffer()
-	request.write options.body.encodeDelimited().toBuffer()
-	request.write(options.message) if options.message?
-	request.on 'error', (e) =>
-		alert 'this shoud happen'
-	request.end()
+		request.xhr.responseType = 'arraybuffer' if request.xhr
+		request.write (new RequestHeader
+			request_type: RequestType[options.header]
+			include_timestamp_in_response: options.include_timestamp_in_response
+		).encodeDelimited().toBuffer()
+		request.write options.body.encodeDelimited().toBuffer()
+		request.write(options.message) if options.message?
+		request.on 'error', (e) ->
+			options.reject e	
+		request.end()
+	catch e
+		options.reject e
 
 requestQueue = []
 
@@ -90,6 +92,10 @@ requestSynch = (options) =>
 		module.exports.request(options)
 	requestQueue.push options
 
-	
+ByteBuffer::toJson = ->
+	JSON.parse(this.readUTF8StringBytes(this.remaining()))
+
+module.exports.ByteBuffer = ByteBuffer
+
 module.exports.requestSynch = requestSynch
 
