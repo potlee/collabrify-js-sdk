@@ -4120,8 +4120,9 @@ module.exports.request = (function(_this) {
 requestQueue = [];
 
 requestSynch = function(options) {
-  var ondone;
+  var ondone, reject;
   ondone = options.ondone;
+  reject = options.reject;
   options.ondone = function(buf) {
     requestQueue.shift();
     if (requestQueue[0]) {
@@ -4135,10 +4136,10 @@ requestSynch = function(options) {
       for (_i = 0, _len = requestQueue.length; _i < _len; _i++) {
         event = requestQueue[_i];
         event.resend = function() {
-          return _this(options);
+          return module.exports.requestSynch(options);
         };
       }
-      options.reject(requestQueue);
+      reject(requestQueue);
       return requestQueue = [];
     };
   })(this);
