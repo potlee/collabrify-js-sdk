@@ -4065,28 +4065,9 @@ module.exports.chunkSize = 1024 * 1024 * 30;
 
 module.exports.request = (function(_this) {
   return function(options) {
-    var callback, client, e, http_options, request;
+    var e, http_options, request;
     options.reject || (options.reject = function() {});
     try {
-      client = _this.client;
-      callback = function(res) {
-        if (res.setEncoding) {
-          res.setEncoding('base64');
-        }
-        res.on('data', function(chunk) {
-          var buf, header;
-          buf = ByteBuffer.wrap(chunk);
-          header = ResponseHeader.decodeDelimited(buf);
-          if (header.success_flag) {
-            return options.ondone(buf, header);
-          } else {
-            return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
-          }
-        });
-        return res.on('error', function(e) {
-          return options.reject(e);
-        });
-      };
       http_options = {
         host: global.host,
         path: '/request',
@@ -4094,11 +4075,28 @@ module.exports.request = (function(_this) {
         withCredentials: false
       };
       request = http.request(http_options, function() {});
-      if (request.xhr) {
-        request.xhr.responseType = 'arraybuffer';
-      }
+      request.xhr.responseType = 'arraybuffer';
       request.xhr.onreadystatechange = function() {
-        return console.log(request.xhr.readyState);
+        var buf, header;
+        console.log(request.xhr.readyState);
+        if (request.xhr.readyState !== 4) {
+          return;
+        }
+        if (request.xhr.status === 200) {
+          if (buf = ByteBuffer.wrap(request.xhr.response)) {
+            header = ResponseHeader.decodeDelimited(buf);
+            if (header.success_flag) {
+              return options.ondone(buf, header);
+            } else {
+              return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
+            }
+          }
+        } else {
+          return options.reject(new Error('Server not accessable'));
+        }
+      };
+      request.xhr.ontimeout = function() {
+        return options.reject(new Error('timeout'));
       };
       request.write((new RequestHeader({
         request_type: RequestType[options.header],
@@ -4121,29 +4119,34 @@ module.exports.request = (function(_this) {
 
 requestQueue = [];
 
-requestSynch = (function(_this) {
-  return function(options) {
-    var ondone;
-    ondone = options.ondone;
-    options.ondone = function(buf) {
-      requestQueue.shift();
-      if (requestQueue[0]) {
-        module.exports.request(requestQueue[0]);
-      }
-      return ondone(buf);
-    };
-    if (!requestQueue[0]) {
-      module.exports.request(options);
+requestSynch = function(options) {
+  var ondone;
+  ondone = options.ondone;
+  options.ondone = function(buf) {
+    requestQueue.shift();
+    if (requestQueue[0]) {
+      module.exports.request(requestQueue[0]);
     }
-    return requestQueue.push(options);
+    return ondone(buf);
   };
-})(this);
-
-window.addEventListener("online", function() {
-  if (requestQueue[0]) {
-    return module.exports.request(requestQueue[0]);
+  options.reject = (function(_this) {
+    return function(e) {
+      var event, _i, _len;
+      for (_i = 0, _len = requestQueue.length; _i < _len; _i++) {
+        event = requestQueue[_i];
+        event.resend = function() {
+          return _this(options);
+        };
+      }
+      options.reject(requestQueue);
+      return requestQueue = [];
+    };
+  })(this);
+  if (!requestQueue[0]) {
+    module.exports.request(options);
   }
-}, false);
+  return requestQueue.push(options);
+};
 
 ByteBuffer.prototype.toJSON = function() {
   return JSON.parse(this.readUTF8StringBytes(this.remaining()));
@@ -4209,7 +4212,8 @@ CollabrifyClient = (function() {
   CollabrifyClient.prototype.broadcast = function(message, event_type) {
     return new Promise((function(_this) {
       return function(fulfill, reject) {
-        var buffer;
+        var buffer, srid;
+        srid = _this.submission_registration_id++;
         buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer();
         return Collabrify.requestSynch({
           header: 'ADD_EVENT_REQUEST',
@@ -4217,7 +4221,7 @@ CollabrifyClient = (function() {
           body: new Collabrify.AddEventRequest({
             access_info: _this.accessInfo(),
             number_of_bytes_to_follow: buffer.byteLength,
-            submission_registration_id: _this.submission_registration_id++,
+            submission_registration_id: srid,
             event_type: event_type
           }),
           message: buffer,
@@ -4232,7 +4236,10 @@ CollabrifyClient = (function() {
             };
             event.author = _this.participant;
             return fulfill(event);
-          }
+          },
+          event_type: event_type,
+          event: message,
+          submission_registration_id: srid
         });
       };
     })(this));
@@ -12527,7 +12534,7 @@ describe('CollabrifyClient', function() {
       password: 'password',
       tags: ['node_test_session'],
       startPaused: false
-    });
+    })["catch"](alert);
     c.on('notifications_start', function() {
       return c.broadcast({
         deep: 'potlee'
@@ -12625,7 +12632,7 @@ describe('CollabrifyClient', function() {
       String(c.session).should.equal('undefined');
       return done();
     })["catch"](function(e) {
-      throw e;
+      return alert(e);
     });
   });
   it('should end session', function(done) {
@@ -12671,7 +12678,7 @@ describe('CollabrifyClient', function() {
     }).then(function() {
       return done();
     })["catch"](function(e) {
-      return console.log(e);
+      return alert(e);
     });
   });
   return it('should start notifications', function(done) {
@@ -12691,7 +12698,7 @@ describe('CollabrifyClient', function() {
       return done();
     });
     return c.on('notifications_error', function(error) {
-      throw error;
+      return alert(error);
     });
   });
 });

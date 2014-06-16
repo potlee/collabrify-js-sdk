@@ -144,6 +144,7 @@ The current submission_registration_id.
 
 ## Errors
 All errors except for notification errors are handled through promises.
+When a broadcast call fails, the catch handles passes an Array of events (that failed) that have a resend() method that can be used to try to send the event again.
 
 ## Compatibility
 

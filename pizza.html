@@ -83,6 +83,7 @@
 	c.on('notifications_start', function(){
 		console.log('start');
 	});
+	var x;
 	toggle_topping = function (cb) {
 		document.getElementById(cb.value+'_image').style.visibility = (cb.checked ? "": "hidden");
 		data.toppings[cb.value] = cb.checked;
@@ -92,8 +93,8 @@
 		.then(function(){
 			console.log('broadcast done');
 		})
-		.catch(function(e){
-			console.log(e)
+		.catch(function(events){
+			events[0].resend();			
 		});
 	};
 

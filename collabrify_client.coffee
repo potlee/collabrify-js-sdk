@@ -33,6 +33,7 @@ class CollabrifyClient
 			#messageByteBuffer = new ByteBuffer()
 			#messageByteBuffer.writeJSON message
 			#messageBuffer = messageByteBuffer.toBuffer()
+			srid = @submission_registration_id++
 			buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer()
 			Collabrify.requestSynch
 				header: 'ADD_EVENT_REQUEST'
@@ -41,7 +42,7 @@ class CollabrifyClient
 				body: new Collabrify.AddEventRequest
 					access_info: @accessInfo()
 					number_of_bytes_to_follow: buffer.byteLength#messageBuffer.byteLength
-					submission_registration_id: @submission_registration_id++
+					submission_registration_id: srid
 					event_type: event_type
 
 				message: buffer#messageBuffer
@@ -54,6 +55,10 @@ class CollabrifyClient
 					event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
 					event.author = @participant
 					fulfill(event)
+				event_type: event_type
+				event: message
+				submission_registration_id: srid
+
 
 	createSession: (sessionProperties) ->
 		new Promise (fullfill, reject) =>

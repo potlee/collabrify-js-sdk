@@ -37,6 +37,7 @@ describe 'CollabrifyClient', ->
 			password: 'password'
 			tags: ['node_test_session']
 			startPaused: false
+		.catch alert
 		c.on 'notifications_start', ->
 			c.broadcast deep: 'potlee'
 			.catch (e) ->
@@ -117,7 +118,7 @@ describe 'CollabrifyClient', ->
 			String(c.session).should.equal 'undefined'
 			done()
 		.catch (e) ->
-			throw e
+			alert e
 
 	it 'should end session', (done) ->
 		@timeout 3000
@@ -154,7 +155,7 @@ describe 'CollabrifyClient', ->
 		.then ->
 			done()
 		.catch (e) ->
-			console.log e
+			alert e
 
 	it 'should start notifications', (done) ->
 		this.timeout(3000)
@@ -170,7 +171,7 @@ describe 'CollabrifyClient', ->
 		c.on 'notifications_start', ->
 			done()
 		c.on 'notifications_error', (error) ->
-			throw error
+			alert error
 
 	# it 'should be able to prevent further joins', (done) ->
 	# 	@client.createSession

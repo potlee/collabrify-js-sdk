@@ -45,20 +45,6 @@ module.exports.chunkSize = 1024*1024*30
 module.exports.request = (options) =>
 	options.reject ||= ->
 	try
-		client = @client
-		callback = (res) ->
-			res.setEncoding('base64') if res.setEncoding
-			res.on 'data', (chunk) ->
-				buf = ByteBuffer.wrap(chunk)#, 'base64')
-				header = ResponseHeader.decodeDelimited(buf)
-				if header.success_flag
-					options.ondone(buf, header)
-				else
-					options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
-
-			res.on 'error', (e) ->
-				options.reject e
-		
 		http_options =
 			host: global.host
 			path: '/request'
@@ -66,9 +52,24 @@ module.exports.request = (options) =>
 			withCredentials: false
 		request = http.request(http_options, ->)
 
-		request.xhr.responseType = 'arraybuffer' if request.xhr
+		request.xhr.responseType = 'arraybuffer'
 		request.xhr.onreadystatechange = ->
 			console.log request.xhr.readyState
+			if request.xhr.readyState != 4
+				return
+			if request.xhr.status == 200
+				if buf = ByteBuffer.wrap(request.xhr.response)#, 'base64')
+					header = ResponseHeader.decodeDelimited(buf)
+					if header.success_flag
+						options.ondone(buf, header)
+					else
+						options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
+			else
+				options.reject new Error('Server not accessable')
+
+		request.xhr.ontimeout = ->
+			options.reject new Error('timeout')
+
 		request.write (new RequestHeader
 			request_type: RequestType[options.header]
 			include_timestamp_in_response: options.include_timestamp_in_response
@@ -83,16 +84,25 @@ module.exports.request = (options) =>
 
 requestQueue = []
 
-requestSynch = (options) =>
+requestSynch = (options) ->
 	ondone = options.ondone
+	reject = options.reject
 	options.ondone = (buf) ->
 		requestQueue.shift()
 		module.exports.request(requestQueue[0]) if requestQueue[0]
 		ondone(buf)
 
+	options.reject = (e) =>
+		for event in requestQueue
+			event.resend = =>
+				module.exports.requestSynch(options)
+		reject requestQueue
+		requestQueue = []
+
 	unless requestQueue[0]
 		module.exports.request(options)
 	requestQueue.push options
+
 
 ByteBuffer::toJSON = ->
 	JSON.parse(this.readUTF8StringBytes(this.remaining()))
