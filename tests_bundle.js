@@ -4065,49 +4065,57 @@ module.exports.chunkSize = 1024 * 1024 * 30;
 
 module.exports.request = (function(_this) {
   return function(options) {
-    var callback, client, http_options, request;
+    var callback, client, e, http_options, request;
     options.reject || (options.reject = function() {});
-    client = _this.client;
-    callback = function(res) {
-      if (res.setEncoding) {
-        res.setEncoding('base64');
-      }
-      res.on('data', function(chunk) {
-        var buf, header;
-        buf = ByteBuffer.wrap(chunk);
-        header = ResponseHeader.decodeDelimited(buf);
-        if (header.success_flag) {
-          return options.ondone(buf, header);
-        } else {
-          return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
+    try {
+      client = _this.client;
+      callback = function(res) {
+        if (res.setEncoding) {
+          res.setEncoding('base64');
         }
-      });
-      return res.on('error', function(e) {
+        res.on('data', function(chunk) {
+          var buf, header;
+          buf = ByteBuffer.wrap(chunk);
+          header = ResponseHeader.decodeDelimited(buf);
+          if (header.success_flag) {
+            return options.ondone(buf, header);
+          } else {
+            return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
+          }
+        });
+        return res.on('error', function(e) {
+          return options.reject(e);
+        });
+      };
+      http_options = {
+        host: global.host,
+        path: '/request',
+        method: 'POST',
+        withCredentials: false
+      };
+      request = http.request(http_options, function() {});
+      if (request.xhr) {
+        request.xhr.responseType = 'arraybuffer';
+      }
+      request.xhr.onreadystatechange = function() {
+        return console.log(request.xhr.readyState);
+      };
+      request.write((new RequestHeader({
+        request_type: RequestType[options.header],
+        include_timestamp_in_response: options.include_timestamp_in_response
+      })).encodeDelimited().toBuffer());
+      request.write(options.body.encodeDelimited().toBuffer());
+      if (options.message != null) {
+        request.write(options.message);
+      }
+      request.on('error', function(e) {
         return options.reject(e);
       });
-    };
-    http_options = {
-      host: global.host,
-      path: '/request',
-      method: 'POST',
-      withCredentials: false
-    };
-    request = http.request(http_options, callback);
-    if (request.xhr) {
-      request.xhr.responseType = 'arraybuffer';
+      return request.end();
+    } catch (_error) {
+      e = _error;
+      return options.reject(e);
     }
-    request.write((new RequestHeader({
-      request_type: RequestType[options.header],
-      include_timestamp_in_response: options.include_timestamp_in_response
-    })).encodeDelimited().toBuffer());
-    request.write(options.body.encodeDelimited().toBuffer());
-    if (options.message != null) {
-      request.write(options.message);
-    }
-    request.on('error', function(e) {
-      return alert('this shoud happen');
-    });
-    return request.end();
   };
 })(this);
 
@@ -4118,11 +4126,11 @@ requestSynch = (function(_this) {
     var ondone;
     ondone = options.ondone;
     options.ondone = function(buf) {
-      ondone(buf);
       requestQueue.shift();
       if (requestQueue[0]) {
-        return module.exports.request(requestQueue[0]);
+        module.exports.request(requestQueue[0]);
       }
+      return ondone(buf);
     };
     if (!requestQueue[0]) {
       module.exports.request(options);
@@ -4131,7 +4139,13 @@ requestSynch = (function(_this) {
   };
 })(this);
 
-ByteBuffer.prototype.toJson = function() {
+window.addEventListener("online", function() {
+  if (requestQueue[0]) {
+    return module.exports.request(requestQueue[0]);
+  }
+}, false);
+
+ByteBuffer.prototype.toJSON = function() {
   return JSON.parse(this.readUTF8StringBytes(this.remaining()));
 };
 
@@ -4167,7 +4181,15 @@ CollabrifyClient = (function() {
     this.eventEmitter = new EventEmitter();
     Collabrify.request.client = this;
     this.submission_registration_id = 1;
-    this.warmupRequest();
+    this.warmupRequest().then((function(_this) {
+      return function() {
+        return _this.eventEmitter.emit('ready');
+      };
+    })(this))["catch"]((function(_this) {
+      return function(e) {
+        return _this.eventEmitter.emit('error');
+      };
+    })(this));
   }
 
   CollabrifyClient.prototype.accessInfo = function() {
@@ -4256,7 +4278,6 @@ CollabrifyClient = (function() {
             for (i = _j = 0, _len = _ref1.length; _j < _len; i = ++_j) {
               chunk = _ref1[i];
               is_last = chunk === basefile_chunks[basefile_chunks.length - 1];
-              console.log('sending part ' + i);
               _results.push(Collabrify.requestSynch({
                 header: 'ADD_TO_BASE_FILE_REQUEST',
                 reject: reject,
@@ -4396,7 +4417,7 @@ CollabrifyClient = (function() {
           }
           event.author = _this.session.participant[event.author_participant_id];
           event.data = function() {
-            return event.payload.toJson();
+            return event.payload.toJSON();
           };
           event.rawData = function() {
             return event.payload.toBuffer();
@@ -4464,7 +4485,7 @@ CollabrifyClient = (function() {
                 for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
                   event = Collabrify.Event.decodeDelimited(buf);
                   event.data = function() {
-                    return event.payload.toJson();
+                    return event.payload.toJSON();
                   };
                   event.rawData = function() {
                     return event.payload.toBuffer();
@@ -4480,7 +4501,7 @@ CollabrifyClient = (function() {
     })(this);
     socket.onerror = (function(_this) {
       return function(error) {
-        return _this.eventEmitter.emit('notifications_error', error);
+        return _this.eventEmitter.emit('error', new Error(error.description || "notificaitons error"));
       };
     })(this);
     return socket.onclose = (function(_this) {
@@ -4491,15 +4512,18 @@ CollabrifyClient = (function() {
   };
 
   CollabrifyClient.prototype.warmupRequest = function() {
-    return Collabrify.request({
-      header: 'WARMUP_REQUEST',
-      body: new Collabrify.WarmupRequest,
-      ondone: (function(_this) {
-        return function() {
-          return _this.eventEmitter.emit('ready');
-        };
-      })(this)
-    });
+    return new Promise((function(_this) {
+      return function(fullfill, reject) {
+        return Collabrify.request({
+          header: 'WARMUP_REQUEST',
+          body: new Collabrify.WarmupRequest,
+          reject: reject,
+          ondone: function() {
+            return fullfill();
+          }
+        });
+      };
+    })(this));
   };
 
   CollabrifyClient.prototype.leaveSession = function() {
@@ -12512,7 +12536,7 @@ describe('CollabrifyClient', function() {
       });
     });
     c.on('event', function(event) {
-      event.data.deep.should.equal('potlee');
+      event.data().deep.should.equal('potlee');
       return done();
     });
     return c.on('notifications_error', function(error) {

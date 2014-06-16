@@ -197,7 +197,7 @@ class CollabrifyClient
 					addEvent.event.submission_registration_id = -1
 
 				event.author = @session.participant[event.author_participant_id]
-				event.data = -> event.payload.toJson()
+				event.data = -> event.payload.toJSON()
 				event.rawData = -> event.payload.toBuffer()
 				addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
 
@@ -254,7 +254,7 @@ class CollabrifyClient
 						if body.number_of_events_to_follow
 							for i in [1..body.number_of_events_to_follow] 
 								event = Collabrify.Event.decodeDelimited(buf)
-								event.data = -> event.payload.toJson()
+								event.data = -> event.payload.toJSON()
 								event.rawData = -> event.payload.toBuffer()
 								@eventEmitter.emitOrdered 'event', event, event.order_id
 				#@eventEmitter.nextEvent = response.current_order_id.low + 1

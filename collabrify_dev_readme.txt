@@ -6,6 +6,7 @@ npm insall -g coffeescript
 npm install -g mocha
 npm install -g chai
 npm install browserify
+npm install browser-request
 
 run tests:
 mocha --compilers coffee:coffee-script/register -R spec

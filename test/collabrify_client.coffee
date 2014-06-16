@@ -42,7 +42,7 @@ describe 'CollabrifyClient', ->
 			.catch (e) ->
 				throw e
 		c.on 'event', (event) ->
-			event.data.deep.should.equal 'potlee'
+			event.data().deep.should.equal 'potlee'
 			done()
 		c.on 'notifications_error', (error) ->
 			throw error

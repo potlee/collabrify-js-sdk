@@ -4136,7 +4136,7 @@ requestSynch = (function(_this) {
   };
 })(this);
 
-ByteBuffer.prototype.toJson = function() {
+ByteBuffer.prototype.toJSON = function() {
   return JSON.parse(this.readUTF8StringBytes(this.remaining()));
 };
 
@@ -4408,7 +4408,7 @@ CollabrifyClient = (function() {
           }
           event.author = _this.session.participant[event.author_participant_id];
           event.data = function() {
-            return event.payload.toJson();
+            return event.payload.toJSON();
           };
           event.rawData = function() {
             return event.payload.toBuffer();
@@ -4476,7 +4476,7 @@ CollabrifyClient = (function() {
                 for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
                   event = Collabrify.Event.decodeDelimited(buf);
                   event.data = function() {
-                    return event.payload.toJson();
+                    return event.payload.toJSON();
                   };
                   event.rawData = function() {
                     return event.payload.toBuffer();

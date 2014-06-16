@@ -64,9 +64,11 @@ module.exports.request = (options) =>
 			path: '/request'
 			method: 'POST'
 			withCredentials: false
-		request = http.request(http_options, callback)
+		request = http.request(http_options, ->)
 
 		request.xhr.responseType = 'arraybuffer' if request.xhr
+		request.xhr.onreadystatechange = ->
+			console.log request.xhr.readyState
 		request.write (new RequestHeader
 			request_type: RequestType[options.header]
 			include_timestamp_in_response: options.include_timestamp_in_response
@@ -84,15 +86,15 @@ requestQueue = []
 requestSynch = (options) =>
 	ondone = options.ondone
 	options.ondone = (buf) ->
-		ondone(buf)
 		requestQueue.shift()
 		module.exports.request(requestQueue[0]) if requestQueue[0]
+		ondone(buf)
 
-	if !requestQueue[0]
+	unless requestQueue[0]
 		module.exports.request(options)
 	requestQueue.push options
 
-ByteBuffer::toJson = ->
+ByteBuffer::toJSON = ->
 	JSON.parse(this.readUTF8StringBytes(this.remaining()))
 
 module.exports.ByteBuffer = ByteBuffer
