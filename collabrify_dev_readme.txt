@@ -12,7 +12,7 @@ run tests:
 mocha --compilers coffee:coffee-script/register -R spec
 
 Compile
-browserify -t coffeeify --extension=".coffee" main.js -o bundle.js
+browserify -t coffeeify --extension=".coffee" main.js -o collabrify-3.0.0-beta1.js
 browserify -t coffeeify --extension=".coffee" test/tests.js -o tests_bundle.js
 
 Names should be camelCase unless they are events or file_names which are snake_case or callbacks which are everythingtogether or variables that directly map to things in .proto files in which case they should be named accordingly.
