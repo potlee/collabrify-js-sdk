@@ -4214,7 +4214,11 @@ CollabrifyClient = (function() {
       return function(fulfill, reject) {
         var buffer, srid;
         srid = _this.submission_registration_id++;
-        buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer();
+        if (message.toString() === '[object ArrayBuffer]') {
+          buffer = message;
+        } else {
+          buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer();
+        }
         return Collabrify.requestSynch({
           header: 'ADD_EVENT_REQUEST',
           reject: reject,
