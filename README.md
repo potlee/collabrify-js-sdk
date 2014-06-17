@@ -89,7 +89,7 @@ Returns a promise that gets resolved when the session is joined.
 ```javascript
 	client.broadcast({any: 'javascript', object: 1});
 ```
-Returns a promise that gets resolved when broadcast is done.
+Returns a promise that gets resolved when broadcast is done. If a ArrayBuffer object is passed, it is passed along as raw data.
 
 ### CollabrifyClient#leaveSession()
 ```javascript
@@ -123,13 +123,17 @@ Resumes incoming events.
 
 ## Events
 
-#### event
-#### user_joined(user)
-#### user_left(user)
-#### sesson_ended
-#### notifications_start
-#### notifications_error
-#### notifications_close
+### event(event)
+#### event#data()
+Returns JSON parsed data
+### event#rawData()
+Returns raw bytes
+### user_joined(user)
+### user_left(user)
+### sesson_ended
+### notifications_start
+### notifications_error
+### notifications_close
 
 ## Properties
 
@@ -144,7 +148,7 @@ The current submission_registration_id.
 
 ## Errors
 All errors except for notification errors are handled through promises.
-When a broadcast call fails, the catch handles passes an Array of events (that failed) that have a resend() method that can be used to try to send the event again.
+When a broadcast call fails, the catch handler passes an Array of events (that failed) that have a resend() method that can be used to try to send the event again.
 
 ## Compatibility
 
@@ -154,3 +158,5 @@ Should work on
 #### IE 11 (Desktop and Windows Phone)
 #### Chrome >= 7
 #### Opera 11.6
+
+Use of a Promise pollyfill is recommended. Take a look at https://github.com/then/promise 

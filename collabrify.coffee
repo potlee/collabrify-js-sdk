@@ -1,8 +1,8 @@
 ByteBuffer = require 'bytebuffer'
 ProtoBuf = require "./ProtoBuf.js/ProtoBuf.js"
 http = require 'http'
-builder = ProtoBuf.loadProtoFile("protocol-buffers/proto/Collabrify-v2/CollabrifyProtocolBuffer.proto")
-RequestType = builder.build "CollabrifyRequestType_PB" 
+builder = ProtoBuf.loadProtoFile "protocol-buffers/proto/Collabrify-v2/CollabrifyProtocolBuffer.proto"
+RequestType = builder.build "CollabrifyRequestType_PB"
 module.exports.RequestType = RequestType
 RequestHeader = builder.build 'CollabrifyRequest_PB'
 module.exports.RequestHeader = RequestHeader
@@ -54,7 +54,6 @@ module.exports.request = (options) =>
 
 		request.xhr.responseType = 'arraybuffer'
 		request.xhr.onreadystatechange = ->
-			console.log request.xhr.readyState
 			if request.xhr.readyState != 4
 				return
 			if request.xhr.status == 200

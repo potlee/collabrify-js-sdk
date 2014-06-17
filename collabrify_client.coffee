@@ -34,7 +34,10 @@ class CollabrifyClient
 			#messageByteBuffer.writeJSON message
 			#messageBuffer = messageByteBuffer.toBuffer()
 			srid = @submission_registration_id++
-			buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer()
+			if message.toString() == '[object ArrayBuffer]'
+				buffer = message
+			else
+				buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer()
 			Collabrify.requestSynch
 				header: 'ADD_EVENT_REQUEST'
 				reject: reject
@@ -109,7 +112,6 @@ class CollabrifyClient
 							message: chunk
 
 							ondone: (buf) =>
-								console.log is_last
 								if is_last
 									fullfill(@session)
 
@@ -324,7 +326,7 @@ class CollabrifyClient
 
 				ondone: (buf) =>
 					fulfill()
-					#console.log Collabrify.RequestHeader.decodeDelimited(buf)
+					#Collabrify.RequestHeader.decodeDelimited(buf)
 
 	pauseEvents: ->
 		@pausedEvents = []

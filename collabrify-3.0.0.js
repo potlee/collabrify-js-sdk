@@ -4078,7 +4078,6 @@ module.exports.request = (function(_this) {
       request.xhr.responseType = 'arraybuffer';
       request.xhr.onreadystatechange = function() {
         var buf, header;
-        console.log(request.xhr.readyState);
         if (request.xhr.readyState !== 4) {
           return;
         }
@@ -4296,7 +4295,6 @@ CollabrifyClient = (function() {
                 }),
                 message: chunk,
                 ondone: function(buf) {
-                  console.log(is_last);
                   if (is_last) {
                     return fullfill(_this.session);
                   }
