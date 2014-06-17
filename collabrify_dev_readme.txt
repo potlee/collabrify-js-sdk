@@ -5,7 +5,7 @@ npm install bytebuffer
 npm insall coffee-script
 npm install mocha
 npm install chai
-npm install browserify
+npm install -g browserify
 npm install browser-request
 
 run tests:

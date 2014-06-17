@@ -1,4 +1,4 @@
-ByteBuffer = require 'bytebuffer'
+ByteBuffer = require './ByteBuffer.js'
 ProtoBuf = require "./ProtoBuf.js"
 http = require 'http'
 builder = ProtoBuf.loadProtoFile "protocol-buffers/proto/Collabrify-v2/CollabrifyProtocolBuffer.proto"
