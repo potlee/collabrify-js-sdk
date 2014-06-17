@@ -3981,7 +3981,7 @@ var ByteBuffer, ProtoBuf, RequestHeader, RequestType, ResponseHeader, builder, h
 
 ByteBuffer = require('bytebuffer');
 
-ProtoBuf = require("./ProtoBuf.js/ProtoBuf.js");
+ProtoBuf = require("./ProtoBuf.js");
 
 http = require('http');
 
@@ -4158,7 +4158,7 @@ module.exports.requestSynch = requestSynch;
 
 
 }).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./ProtoBuf.js/ProtoBuf.js":1,"bytebuffer":6,"http":14}],4:[function(require,module,exports){
+},{"./ProtoBuf.js":1,"bytebuffer":6,"http":14}],4:[function(require,module,exports){
 var ByteBuffer, Collabrify, CollabrifyClient, EventEmitter, goog,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
