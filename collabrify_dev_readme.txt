@@ -1,10 +1,10 @@
 setup
 insall node.js
 npm install promise --save
-npm install bytebuffer.js
-npm insall -g coffeescript
-npm install -g mocha
-npm install -g chai
+npm install bytebuffer
+npm insall coffee-script
+npm install mocha
+npm install chai
 npm install browserify
 npm install browser-request
 
