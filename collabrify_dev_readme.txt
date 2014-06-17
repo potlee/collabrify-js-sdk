@@ -1,12 +1,9 @@
 setup
 insall node.js
-npm install promise --save
-npm install bytebuffer
 npm insall coffee-script
 npm install mocha
 npm install chai
 npm install -g browserify
-npm install browser-request
 
 run tests:
 mocha --compilers coffee:coffee-script/register -R spec
