@@ -47,7 +47,7 @@ And, BOOM! you App is now collabrified. Send messages between clients like so:
 ```
 And recieve the data on the other clients
 ```javascript
-	client.on('event', function (data) {
+	client.on('event', function (event) {
 		// USE THE DATA HERE
 	});
 ```
