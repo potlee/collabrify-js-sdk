@@ -17,7 +17,6 @@ class CollabrifyClient
 			@eventEmitter.emit 'ready'
 		.catch (e) =>
 			@eventEmitter.emit 'error'
-
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
 			application_id: @application_id
@@ -30,9 +29,6 @@ class CollabrifyClient
 
 	broadcast: (message, event_type) ->
 		new Promise (fulfill, reject) =>
-			#messageByteBuffer = new ByteBuffer()
-			#messageByteBuffer.writeJSON message
-			#messageBuffer = messageByteBuffer.toBuffer()
 			srid = @submission_registration_id++
 			if message.toString() == '[object ArrayBuffer]'
 				buffer = message
@@ -186,91 +182,121 @@ class CollabrifyClient
 
 	subscribeToChannel: (channel) =>
 		channel = new goog.appengine.Channel(channel)
-		socket = channel.open()
+		@session.socket = channel.open()
 		
-		socket.onopen = (open) =>
+		@session.socket.onopen = (open) =>
 			@eventEmitter.emit 'notifications_start'
 		
-		socket.onmessage = (message) =>
-			return unless @session 
-			notification = Collabrify.CollabrifyNotification.decode64(message.data)
-
-			if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
-				addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload)
-				event = addEvent.event
-				
-				event.submission_registration_id = addEvent.submission_registration_id
-				unless addEvent.event.author_participant_id == @participant.participant_id
-					addEvent.event.submission_registration_id = -1
-
-				event.author = @session.participant[event.author_participant_id]
-				event.data = -> event.payload.toJSON()
-				event.rawData = -> event.payload.toBuffer()
-				addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
-
-				@eventEmitter.emitOrdered 'event', event
-
-			if notification.notification_message_type == 2 #Collabrify.NotificationMessageType['ADD_PARTICIPANT_NOTIFICATION']
-				addParticipant = Collabrify.Notification_AddParticipant.decode64(notification.payload)
-				@session.participant[addParticipant.participant.participant_id] = addParticipant.participant
-				@eventEmitter.emit 'user_joined', addParticipant.participant
-
-			if notification.notification_message_type == 3 #Collabrify.NotificationMessageType['END_SESSION_NOTIFICATION']
-				@reset()
-				@eventEmitter.emit 'sesson_ended', @session
-
-			if notification.notification_message_type == 4 #Collabrify.NotificationMessageType['REMOVE_PARTICIPANT_NOTIFICATION']
-				removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload)
-				if @catchup_participant_ids
-					@catchup_participant_ids[removeParticipant.participant_id] = null
-				@eventEmitter.emit 'user_left', removeParticipant.participant
-
-			if notification.notification_message_type == 5 #Collabrify.NotificationMessageType['ON_CHANNEL_CONNECTED_NOTIFICATION']
-				@catchup_participant_ids = {}
-				response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload)
-				participantsHash = {}
-				
-				for participant_id in response.participant_id
-					participantsHash[participant_id] = @session.participant[participant_id]
-					unless @session.participant[participant_id]
-						@catchup_participant_ids[participant_id] = true
-						Collabrify.request
-							header: 'GET_PARTICIPANT_REQUEST'
-
-							body: new Collabrify.GetParticipantRequest
-								access_info: @accessInfo()
-								participant_id: [participant_id]
-
-							ondone: (buf) =>
-								body = Collabrify.GetParticipantResponse.decodeDelimited(buf)
-								if @catchup_participant_ids[participant_id]
-									@session.participant[participant_id] = body.participant[0]
-				@session.participant = participantsHash
-				# 	for participant in @session.participant
-
-				Collabrify.request
-					header: 'GET_EVENT_BATCH_REQUEST'
-
-					body: new Collabrify.GetEventBatchRequest
-						access_info: @accessInfo()
-						starting_order_id: @eventEmitter.nextEvent
-						ending_order_id: response.current_order_id.low
+		@session.socket.onmessage = (message) =>
+			try
+				return unless @session 
+				notification = Collabrify.CollabrifyNotification.decode64(message.data)
+				if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
+					addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload)
+					event = addEvent.event
 					
-					ondone: (buf) =>
-						body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
-						if body.number_of_events_to_follow
-							for i in [1..body.number_of_events_to_follow] 
-								event = Collabrify.Event.decodeDelimited(buf)
-								event.data = -> event.payload.toJSON()
-								event.rawData = -> event.payload.toBuffer()
-								@eventEmitter.emitOrdered 'event', event, event.order_id
-				#@eventEmitter.nextEvent = response.current_order_id.low + 1
+					event.submission_registration_id = addEvent.submission_registration_id
+					unless addEvent.event.author_participant_id == @participant.participant_id
+						addEvent.event.submission_registration_id = -1
 
-		socket.onerror = (error) =>
-			@eventEmitter.emit 'error', new Error(error.description || "notificaitons error")
-	
-		socket.onclose = (close) =>
+					event.author = @session.participant[event.author_participant_id]
+					event.data = -> event.payload.toJSON()
+					event.rawData = -> event.payload.toBuffer()
+					addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
+
+					@eventEmitter.emitOrdered 'event', event
+
+				if notification.notification_message_type == 2 #Collabrify.NotificationMessageType['ADD_PARTICIPANT_NOTIFICATION']
+					addParticipant = Collabrify.Notification_AddParticipant.decode(notification.payload)
+					@session.participant[addParticipant.participant.participant_id] = addParticipant.participant
+					@eventEmitter.emit 'user_joined', addParticipant.participant
+
+				if notification.notification_message_type == 3 #Collabrify.NotificationMessageType['END_SESSION_NOTIFICATION']
+					@reset()
+					@eventEmitter.emit 'sesson_ended', @session
+
+				if notification.notification_message_type == 4 #Collabrify.NotificationMessageType['REMOVE_PARTICIPANT_NOTIFICATION']
+					removeParticipant = Collabrify.Notification_RemoveParticipant.decode64(notification.payload)
+					if @catchup_participant_ids
+						@catchup_participant_ids[removeParticipant.particpant.participant_id] = null
+					delete @session.participant[removeParticipant.particpant.participant_id]
+					@eventEmitter.emit 'user_left', removeParticipant.particpant
+
+				if notification.notification_message_type == 5 #Collabrify.NotificationMessageType['ON_CHANNEL_CONNECTED_NOTIFICATION']
+					console.log 'onchannelConnect'
+					@catchup_participant_ids = {}
+					response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload)
+					participantsHash = {}
+					
+					for participant_id in response.participant_id
+						participantsHash[participant_id] = @session.participant[participant_id]
+						unless @session.participant[participant_id]
+							@catchup_participant_ids[participant_id] = true
+							Collabrify.request
+								header: 'GET_PARTICIPANT_REQUEST'
+
+								body: new Collabrify.GetParticipantRequest
+									access_info: @accessInfo()
+									participant_id: [participant_id]
+
+								ondone: (buf) =>
+									body = Collabrify.GetParticipantResponse.decodeDelimited(buf)
+									if @catchup_participant_ids[participant_id]
+										@session.participant[participant_id] = body.participant[0]
+					@session.participant = participantsHash
+					# 	for participant in @session.participant
+
+					Collabrify.request
+						header: 'GET_EVENT_BATCH_REQUEST'
+
+						body: new Collabrify.GetEventBatchRequest
+							access_info: @accessInfo()
+							starting_order_id: @eventEmitter.nextEvent
+							ending_order_id: response.current_order_id
+						
+						ondone: (buf) =>
+							body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
+							if body.number_of_events_to_follow
+								for i in [1..body.number_of_events_to_follow] 
+									event = Collabrify.Event.decodeDelimited(buf)
+									event.data = -> event.payload.toJSON()
+									event.rawData = -> event.payload.toBuffer()
+									@eventEmitter.emitOrdered 'event', event, event.order_id
+			catch e
+				console.log e
+				
+		@session.socket.onerror = (error) =>
+			#close socket and reconnect if still in session
+			return unless @session
+			@reconnectChannel()
+					
+		@session.socket.onclose = (close) =>
 			@eventEmitter.emit 'notifications_close'
+
+	reconnectChannel: ->
+		@session.socket.close()
+		Collabrify.request
+			header: 'UPDATE_NOTIFICATION_ID_REQUEST'
+			reject: (error) =>
+				#reconnect failed, reset and emit error
+				@reset()
+				error = new Error(error.description || "notifications error")
+				console.log error
+				@eventEmitter.emit 'error', error
+				
+			body: new Collabrify.UpdateNotificationIdRequest
+				access_info: @accessInfo()
+				participant_notification_medium_type: 1
+				
+			ondone: (buf) =>
+				body = Collabrify.UpdateNotificationIdResponse.decodeDelimited(buf)
+				@participant = body.participant
+				@session = body.session
+				participantsHash = {}
+				(participantsHash[p.participant_id] = p) for p in @session.participant
+				@session.participant = participantsHash
+				
+				@subscribeToChannel @participant.notification_id
 
 	warmupRequest: ->
 		new Promise (fullfill, reject) =>
@@ -289,7 +315,7 @@ class CollabrifyClient
 
 				body: new Collabrify.RemoveParticipantRequest
 					access_info: @accessInfo()
-					to_be_removed_participant_id: @session.participant_id[0]
+					to_be_removed_participant_id: @participant.participant_id
 
 				ondone: (buf) =>
 					response = Collabrify.RemoveParticipantResponse.decodeDelimited(buf)
@@ -344,9 +370,11 @@ class CollabrifyClient
 
 	reset: ->
 		@participantsHash = {}
-		@session = undefined
+		if @session
+			if @session.socket
+				@session.socket.close()
+			@session = undefined
 		@participant = undefined
 		@submission_registration_id = 1
 		@sessionPassword = undefined
-
 module.exports = CollabrifyClient

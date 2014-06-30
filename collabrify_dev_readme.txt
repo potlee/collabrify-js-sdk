@@ -9,7 +9,7 @@ run tests:
 mocha --compilers coffee:coffee-script/register -R spec
 
 Compile
-browserify -t coffeeify --extension=".coffee" main.js -o collabrify-3.0.0-beta1.js
+browserify -t coffeeify --extension=".coffee" main.js -o ./release/collabrify.js
 browserify -t coffeeify --extension=".coffee" test/tests.js -o tests_bundle.js
 
 Names should be camelCase unless they are events or file_names which are snake_case or callbacks which are everythingtogether or variables that directly map to things in .proto files in which case they should be named accordingly.
@@ -24,7 +24,7 @@ If you do not follow documentation, unexpected behavior will occur, this is norm
 Important Files:
 
 collabrify-x.x.x.js: Final Deploy script
-main.js: script that makes plublic CollabrifyClient. This is compiled by browserify to produce bundle.js
+main.js: script that makes public CollabrifyClient. This is compiled by browserify to produce bundle.js
 collabrify.coffee: cofiguration, defination of "Collabrify" pseudo-class, helpers
 collabrify_client.coffee: CollabrifyClient
 test.html: runs tests if opened in a browser

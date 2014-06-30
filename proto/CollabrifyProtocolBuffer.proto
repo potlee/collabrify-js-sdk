@@ -1,0 +1,1493 @@
+option java_package = "edu.umich.imlc.collabrify";
+import "IMLC/IMLCProtocolBuffer.proto";
+
+//------------------------------------------------------------------------------
+message CollabrifyEvent_PB {
+	optional int64 order_id = 1 [default = -1];
+	optional bytes payload = 2; //
+	optional int64 author_participant_id = 3 [default = 0];
+	optional string event_type = 4; // set by app, used for analytics
+	optional int64 timestamp = 5; // creationDate in CollabrifyEvent_DS
+
+	// This field is mututally exclusive with payload. Payload will eventually be deprecated.
+	repeated GenericProperty_PB property = 6;
+}
+
+// AccessInfo_PB contains any necessary information for locating and/or accessing a session.
+// NOTE: This replaces the accountGmail & accessToken fields (which are now deprecated)
+// in all of the request PBs. It also replaces the sessionID and sessionPassword fields.
+//
+message AccessInfo_PB {
+	optional int64 application_id = 1;
+
+	// Only needed if the request accesses a specific session.
+	optional int64 session_id = 2;
+
+	// Note: When creating sessions, the session password to use is Not set here. It is part
+	// of the request-specific fields.
+	optional string session_password = 3;
+
+	// THESE ONLY NEED TO BE SET IF REQUIRED BY THE SPECIFIC REQUEST.
+	// It is possible that only one is needed.
+	optional string user_id = 4; // this will gradually replace the separate user_id field.
+	optional int64 participant_id = 5; // this will gradually replace the separate participant_id field.
+}
+
+message Account_PB {
+	optional string account_g_mail = 1;
+	optional string account_name = 2;
+}
+
+message Participant_PB {
+	optional int64 participant_id = 1 [default = 0];
+	optional string user_id = 2; // renamed from "g_mail"
+	optional string display_name = 3;
+	optional NotificationMediumType_PB notification_type = 4
+	[default = NOTIFICATION_MEDIUM_TYPE_NOT_SET];
+	optional string notification_id = 5; // i.e. channel token
+
+	// TODO: Stop populating this after a compatible client has been available
+	// for a while
+	optional Date_PB OBSOLETE_joined_timestamp = 6 [deprecated = true]; // DEPRECATED
+	//
+	optional int64 joined_timestamp = 7;
+}
+
+// DEPRECATED in favor of CollabrifyUser_PB
+// (That didn't take long did it!?)
+message User_PB {
+// optional string datastore_id = 1; // userID + "__" + applicationID
+	optional int64 application_id = 2;
+	optional string user_id = 3; // only unique within an app
+	optional string first_name = 4;
+	optional string last_name = 6;
+
+	// Extended info, not populated in lite version.
+	optional string middle_name = 5;
+	optional string email = 7;
+	optional int64 date_of_birth = 18;
+	optional string home_number = 8;
+	optional string work_number = 9;
+	optional string mobile_number = 10;
+	optional string fax_number = 11;
+	optional string address_line_1 = 12;
+	optional string address_line_2 = 13;
+	optional string city = 14;
+	optional string state = 15;
+	optional string postal_code = 16;
+	optional string country = 17;
+	// Note: May need to expose the tagMap as repeated SimpleProperty
+	// at some later point.
+}
+
+message CollabrifyUser_PB {
+// LITE-INFO
+	optional int64 user_id = 1;
+	optional int64 application_id = 2;
+	optional string display_name = 3;
+
+	// EXTENDED-INFO, not populated in lite version.
+	optional string first_name = 4;
+	optional string middle_name = 5;
+	optional string last_name = 6;
+	optional int64 date_of_birth = 7;
+	optional string facebook_id = 8;
+	optional string google_id = 9;
+	optional string twitter_id = 10;
+	optional ContactInfo_PB contact_info = 11;
+	optional int64 creation_date = 12;
+}
+
+message ContactInfo_PB {
+	optional string email = 1;
+	optional string home_number = 2;
+	optional string work_number = 3;
+	optional string mobile_number = 4;
+	optional string fax_number = 5;
+	optional string address_line_1 = 6;
+	optional string address_line_2 = 7;
+	optional string city = 8;
+	optional string state = 9;
+	optional string postal_code = 10;
+	optional string country = 11;
+}
+
+// For analytics
+message EventBreakdown_PB {
+	repeated ParticipantEventCount_PB participant_event_count = 1;
+}
+
+// For analytics
+message ParticipantEventCount_PB {
+	optional int64 participant_id = 1;
+	repeated CountForEventType_PB count_for_event_type = 2;
+
+	// ESTABROOK HACK!!! REMOVE THIS AFTER THE PILOT.
+	optional string participant_user_id = 3 [deprecated = true];
+}
+
+// For analytics
+message CountForEventType_PB {
+	optional string event_type = 1;
+	optional int32 count = 2;
+}
+
+// The Participant_PB fields are left blank when listing sessions.
+message Session_PB {
+	optional string account_g_mail = 1 [deprecated = true];
+	optional int64 application_id = 21;
+	optional int64 session_id = 2 [default = 0];
+	optional string session_name = 4;
+	repeated string session_tag = 5;
+	optional int64 starting_order_i_d = 6 [default = -1];
+	optional int64 current_order_id = 7 [default = -1];
+	optional Participant_PB owner = 8;
+	repeated Participant_PB participant = 9;
+	optional int64 owner_id = 10 [default = 0];
+	repeated int64 participant_id = 11;
+	optional bool password_protected = 12;
+
+	// TODO: Stop populating this after a compatible client has been available
+	// for a while
+	optional Date_PB OBSOLETE_creation_timestamp = 13 [deprecated = true]; // DEPRECATED
+
+
+	//
+	optional int64 creation_timestamp = 19;
+	optional string base_file_key = 14;
+	optional string session_type = 15; // alias for base file type
+	optional int32 base_file_size = 16 [default = 0];
+	optional bool base_file_complete = 17;
+	optional int32 participant_limit = 18 [default = 0];
+	optional bool still_joinable = 20; // session locking
+
+	// This is for app usage in determining compatibility
+	optional string app_version = 33;
+
+	// This contains analytics for the session
+	optional EventBreakdown_PB event_breakdown = 30;
+
+	// The session coordinator defaults to the session owner.
+	// For VOIP, the coordinator is the participant who hosts the call.
+	// This responsibility can be passed around during the session, whereas the
+	// session owner never changes.
+	optional Participant_PB coordinator = 31; // NOT SUPPORTED YET
+	optional int64 coordinator_id = 32; // NOT SUPPORTED YET
+}
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+//message CollabrifiedMapEntry_PB {
+//
+//// The property name (i.e. key for the map entry) cannot be the empty string
+//	optional GenericProperty_PB property = 1;
+//
+//	// Sequence number does not get set by client
+//	optional int64 sequence_number = 2;
+//}
+message CollabrifiedMapEntry_PB {
+
+// key field must be set to non-empty string.
+// note: the property name field in GenericProperty_PB has nothing to do with key.
+	optional string key = 1;
+	optional GenericProperty_PB value = 3;
+
+	// Sequence number does not get set by client
+	optional int64 sequence_number = 2;
+}
+
+message CollabrifiedMap_PB {
+	optional string name = 1;
+	optional int64 sequence_number = 2;
+	repeated CollabrifiedMapEntry_PB entry = 3;
+}
+
+message CollabrifiedListEntry_PB {
+	optional bytes value = 1;
+}
+
+message CollabrifiedList_PB {
+	optional string name = 1;
+	optional int64 sequence_number = 2;
+	repeated CollabrifiedListEntry_PB entry = 3;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+enum CollabrifyExceptionType_PB {
+	NOT_SET = 0;
+	// ----------
+	GENERAL_ERROR = 1;
+	IO_EXCEPTION = 2;
+	INVALID_PROTOCOL_BUFFER_EXCEPTION = 3;
+	NOT_IMPLEMENTED_YET = 4;
+	OPERATION_NOT_PERMITTED = 5;
+	INVALID_SETTINGS_FOR_OPERATION = 6;
+	CLIENT_SIDE_ERROR = 7;
+	SERVER_SIDE_ERROR = 8;
+	// ----------
+	UNRECOGNIZED_EXCEPTION_ENUM = 9;
+	// ----------
+	ACCOUNT_ALREADY_EXISTS = 10;
+	ACCOUNT_PASSWORD_MISSING = 11;
+	ACCOUNT_GMAIL_MISSING = 12;
+	ACCOUNT_NAME_MISSING = 13;
+	ACCOUNT_REF_MISSING = 14;
+	ACCOUNT_ACCESS_TOKEN_MISSING = 15;
+	INVALID_ACCOUNT_GMAIL = 16;
+	INVALID_ACCESS_TOKEN = 17;
+	INVALID_ACCOUNT_GMAIL_OR_ACCESS_TOKEN = 18;
+	INVALID_ACCOUNT_GMAIL_OR_PASSWORD = 19;
+	// ----------
+	SESSION_ALREADY_EXISTS = 20;
+	SESSION_ID_MISSING = 21;
+	SESSION_NAME_MISSING = 22;
+	SESSION_PASSWORD_MISSING = 23;
+	SESSION_REF_MISSING = 24;
+	INVALID_SESSION_ID = 25;
+	INVALID_SESSION_KEY = 26;
+	INVALID_SESSION_PASSWORD = 27;
+	INVALID_SESSION_ID_OR_PASSWORD = 28;
+	SESSION_TAGS_MISSING = 29;
+	TOO_MANY_SESSION_TAGS = 30;
+	TOO_FEW_SESSION_TAGS = 31;
+	SESSION_TAG_IS_NULL_OR_EMPTY = 32;
+	SESSION_ENDED = 33;
+	// ----------
+	INVALID_BASE_FILE_KEY = 40;
+	BASE_FILE_DATA_MISSING = 41;
+	BASE_FILE_DATA_TOO_LARGE = 42;
+	NO_BASE_FILE_FOR_SESSION = 43;
+	BASE_FILE_NOT_COMPLETE_YET = 44;
+	BASE_FILE_ALREADY_COMPLETE = 45;
+	// ----------
+	FILE_REF_IS_MISSING = 50;
+	BYTE_DATA_IS_MISSING = 51;
+	BYTE_DATA_TOO_LARGE = 52;
+	BYTE_DATA_TOO_LARGE_FOR_REQUEST = 53;
+	BYTE_DATA_TOO_LARGE_FOR_RESPONSE = 54;
+	INVALID_START_POSITION_OR_LENGTH = 55;
+
+	// ----------
+	OWNER_USER_ID_MISSING = 70;
+	OWNER_DISPLAY_NAME_MISSING = 71;
+	OWNER_NOTIFICATION_ID_MISSING = 72;
+	OWNER_NOTIFICATION_TYPE_MISSING = 73;
+	OWNER_REF_MISSING = 74;
+	OWNER_PARTICIPANT_ID_IS_ZERO = 75;
+	OWNER_ACTION_BY_NON_OWNER = 76;
+	OWNER_REMOTE_SERVLET_NOTIFICATION_URL_MISSING = 77;
+	OWNER_REMOTE_SERVLET_GET_NOTIFICATION_ID_URL_MISSING = 78;
+
+	// ----------
+	LATE_JOIN_NOT_ALLOWED = 79;
+	PARTICIPANT_USER_ID_MISSING = 80;
+	PARTICIPANT_DISPLAY_NAME_MISSING = 81;
+	PARTICIPANT_NOTIFICATION_ID_MISSING = 82;
+	PARTICIPANT_NOTIFICATION_TYPE_MISSING = 83;
+	PARTICIPANT_REF_MISSING = 84;
+	PARTICIPANT_ID_MISSING = 85; // renamed from PARTICIPANT_ID_IS_ZERO
+	// ----------
+	PARTICIPANT_NOT_IN_SESSION = 86;
+	PARTICIPANT_ALREADY_IN_SESSION = 87;
+	INVALID_PARTICIPANT_LIMIT = 88;
+	PARTICIPANT_LIMIT_REACHED = 89;
+	// ----------
+	PARTICIPANT_REMOTE_SERVLET_NOTIFICATION_URL_MISSING = 90;
+	PARTICIPANT_REMOTE_SERVLET_GET_NOTIFICATION_ID_URL_MISSING = 91;
+	REMOTE_SERVLET_ERROR = 92;
+
+	// ----------
+	INVALID_ORDER_ID = 100;
+	NO_EVENT_WITH_ORDER_ID = 101;
+	EVENT_DATA_MISSING = 102;
+	EVENT_DATA_TOO_LARGE = 103;
+
+	// ----------
+	// Note: Gradually transition to these two. Deprecate older, specific ones.
+	ENTITY_DOES_NOT_EXIST = 110; // for trying to access something
+	ENTITY_ALREADY_EXISTS = 111; // for trying to create something
+
+	// ----------
+	COLLABRIFY_CLOUD_DOWN_FOR_MAINTENANCE = 150;
+	COLLABRIFY_CLIENT_VERSION_INCOMPATIBLE = 151;
+
+	// ----------
+	USER_ALREADY_EXISTS = 152;
+	USER_DOES_NOT_EXIST = 153;
+	INVALID_USER_ID = 154;
+
+	// ----------
+	APPLICATION_DOES_NOT_EXIST = 155;
+	INVALID_APPLICATION_ID = 156;
+
+	// ----------
+	ARGUMENT_MISSING = 157; // catch-all for any missing arguments
+	ARGUMENT_INVALID = 158; // catch-all for present but invalid arguments
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// This will be used in the future for sending non-session-related flags to the client.
+// Example: client version is out of date.
+enum CollabrifyWarningType_PB {
+	WARNING_NOT_SET = 0;
+	CLIENT_VERSION_OUT_OF_DATE = 1;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+message CollabrifyException_PB {
+	optional CollabrifyExceptionType_PB exception_type = 1;
+	optional string message = 2;
+	optional string stacktrace = 3 [deprecated = true];
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// This is the pre-amble/header that precedes a specific request object.
+// TODO: Rename this to either CollabrifyRequestPreamble_PB or CollabrifyRequestHeader_PB
+message CollabrifyRequest_PB {
+	repeated GenericProperty_PB property = 1;
+	optional CollabrifyRequestType_PB request_type = 2;
+	optional string client_version = 3;
+	optional bool include_timestamp_in_response = 4 [default = false];
+	// Currently this is ignored. The timestamp is always included.
+
+	// NOTE:
+	// The bytes that immediately follow this message are the actual delimited
+	// request PB message.
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// This is the pre-amble/header that precedes a specific response object.
+// TODO: Rename this to either CollabrifyResponsePreamble_PB or CollabrifyResponseHeader_PB
+message CollabrifyResponse_PB {
+	repeated GenericProperty_PB property = 1;
+	optional bool success_flag = 2;
+	optional CollabrifyException_PB exception_old = 3 [deprecated = true]; // this will be deprecated
+	optional CollabrifyExceptionType_PB exception_type = 7;
+	optional Exception_PB exception = 8; // see notes
+	optional bytes response_pb_bytes = 4 [deprecated = true]; // see notes
+	optional int32 number_of_bytes_to_follow = 5 [deprecated = true];
+	repeated CollabrifyWarningType_PB warning = 6; // see notes
+	optional string backend_version = 9;
+	optional int64 timestamp = 10;
+
+	// Note: The CollabrifyException_PB field (originally named "exception") is being deprecated in favor
+	// of the more flexible Exception_PB (which will be accompanied by the field
+	// exception_type). The new field will take the name "exception".
+
+	// NOTE:
+	// If the response_pb_bytes field is not set, then there must be a delimited
+	// object following this message in the stream.
+
+	// Note:
+	// The warning field may be set independently from success/failure/exceptions.
+	// It is used for non-session-related communication with the client.
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+enum CollabrifyRequestType_PB {
+	REQUEST_TYPE_NOT_SET = 0;
+	WARMUP_REQUEST = 1;
+	ADD_EVENT_REQUEST = 2;
+	ADD_PARTICIPANT_REQUEST = 3;
+	CREATE_SESSION_REQUEST = 4;
+	CREATE_SESSION_WITH_BASE_FILE_REQUEST = 5;
+	ADD_TO_BASE_FILE_REQUEST = 6;
+	DELETE_SESSION_REQUEST = 7;
+	DELETE_ALL_SESSIONS_REQUEST = 8; // deprecated
+	DELETE_OLD_SESSIONS_REQUEST = 9;
+	GET_BASE_FILE_REQUEST = 10;
+	GET_FROM_BASE_FILE_REQUEST = 11;
+	GET_CURRENT_ORDER_ID_REQUEST = 12;
+	GET_EVENT_REQUEST = 13;
+	GET_EVENT_BATCH_REQUEST = 14;
+	GET_LAST_EVENT_BY_PARTICIPANT_REQUEST = 15;
+	GET_SESSION_REQUEST = 16;
+	LIST_ACCOUNTS_REQUEST = 17;
+	LIST_SESSIONS_REQUEST = 18;
+	REMOVE_PARTICIPANT_REQUEST = 19;
+	UPDATE_NOTIFICATION_ID_REQUEST = 20;
+	END_SESSION_REQUEST = 21;
+	GET_NOTIFICATION_ID_REQUEST = 22; // This one originates at collabrify-cloud
+	GET_PARTICIPANT_REQUEST = 23;
+	PREVENT_FURTHER_JOINS_REQUEST = 24;
+	CREATE_OR_GET_USER = 25;
+	UPDATE_USER = 26;
+	DELETE_USER = 27; // not exposed to client
+	SEND_TRANSIENT_MESSAGE_REQUEST = 28;
+	ADD_EVENT_BATCH_REQUEST = 29;
+	DATA_STRUCTURE__MAP__CREATE_REQUEST = 30;
+	DATA_STRUCTURE__MAP__PUT_REQUEST = 31;
+	DATA_STRUCTURE__MAP__GET_REQUEST = 32;
+	DATA_STRUCTURE__MAP__REMOVE_REQUEST = 33;
+	DATA_STRUCTURE__MAP__DELETE_REQUEST = 34;
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+enum NotificationMediumType_PB {
+	NOTIFICATION_MEDIUM_TYPE_NOT_SET = 0;
+	COLLABRIFY_CLOUD_CHANNEL = 1; // will be deprecated in favor of DELIMITED
+	MYDESK_CLOUD_CHANNEL = 2; // deprecated
+	GCM = 3; // deprecated
+	APNS = 4; // deprecated
+	REMOTE_SERVLET = 5;
+	// NOTE: If REMOTE_SERVLET is used, then it must be accompanied by a URL.
+
+	// Clients/Server will migrate to this from COLLABRIFY_CLOUD_CHANNEL_OLD
+	COLLABRIFY_CLOUD_CHANNEL_DELIMITED = 6;
+}
+
+//------------------------------------------------------------------------------
+enum NotificationMessageType_PB {
+	NOTIFICATION_MESSAGE_TYPE_NOT_SET = 0;
+	ADD_EVENT_NOTIFICATION = 1;
+	ADD_PARTICIPANT_NOTIFICATION = 2;
+	END_SESSION_NOTIFICATION = 3;
+	REMOVE_PARTICIPANT_NOTIFICATION = 4;
+	ON_CHANNEL_CONNECTED_NOTIFICATION = 5;
+	PREVENT_FURTHER_JOINS_NOTIFICATION = 6;
+	TRANSIENT_MESSAGE_NOTIFICATION = 7;
+	DATASTRUCTURE__MAP_CREATE_NOTIFICATION = 8;
+	DATASTRUCTURE__MAP_PUT_NOTIFICATION = 9;
+	//DATASTRUCTURE__MAP_GET_NOTIFICATION = 10; // NO NEED FOR THIS
+	DATASTRUCTURE__MAP_REMOVE_NOTIFICATION = 11;
+	DATASTRUCTURE__MAP_DELETE_NOTIFICATION = 12;
+}
+
+//------------------------------------------------------------------------------
+message CollabrifyNotification_PB {
+	optional NotificationMessageType_PB notification_message_type = 1;
+	optional bytes payload = 2 [deprecated = true]; // will eventually be deprecated
+
+	// Only set for session-related notifications
+	optional int64 session_id = 3;
+
+	// This is set if trailing data is provided
+	optional bool trailing_data_available = 4 [deprecated = true];
+	// DEPRECATED: This is no longer needed since there is a new NotificationMediumType
+	// specifically for the new format.
+}
+
+//------------------------------------------------------------------------------
+// Note: Eventually this will get wrapped in a CollabrifyNotification_PB
+message Notification_AddEvent_PB {
+	optional int64 order_id = 1;
+
+	// TODO: Stop populating these after a compatible client has been available
+	// for a while - the fields are redundant with CollabrifyEvent_PB.
+	// update: order_id can't be deprecated in case the event is not included.
+	optional int64 author_participant_id = 2 [deprecated = true]; // will eventually be deprecated.
+	optional string event_type = 3 [deprecated = true]; // will eventually be deprecated.
+
+	// Will eventually be deprecated because it will be sent as trailing data.
+	optional CollabrifyEvent_PB event = 4 [deprecated = true];
+
+	// True if the event was small enough (<30KB) to be sent directly.
+	// If this field is set to false, then the event must be fetched separately.
+	optional bool flag__event_included = 6;
+
+	// Didn't want to do the work of putting the srid in CollabrifyEvent_DS
+	// Putting it here instead.
+	// THIS IS ONLY SET FOR THE AUTHOR
+	optional int32 submission_registration_id = 5;
+
+	// Note: if event field is not set, then the CollabrifyEvent_PB will follow
+	// as trailing data IFF the event data itself is less than ~30KB. Otherwise,
+	// it will need to be fetched separately using GetEvent.
+}
+
+//------------------------------------------------------------------------------
+// Note: Eventually this will get wrapped in a CollabrifyNotification_PB
+message Notification_AddParticipant_PB {
+// TODO: Stop populating this after a compatible client has been available
+// for a while
+	optional int64 participant_id = 1 [default = 0, deprecated = true];
+	optional string participant_user_id = 2 [deprecated = true];
+	optional string participant_display_name = 3 [deprecated = true];
+	//NOTE: In the future (for consistency) these will be replaced with
+	// a single Participant_PB that has only these fields set plus timestamp (i.e. partially empty).
+	optional Participant_PB participant = 4;
+}
+
+//------------------------------------------------------------------------------
+message Notification_DataStructure_Map_Create_PB {
+	optional string map_name = 1;
+	repeated string key = 2; // keys in the newly created map
+	optional int64 participant_id = 3; // author
+}
+
+//------------------------------------------------------------------------------
+message Notification_DataStructure_Map_Delete_PB {
+	optional string map_name = 1;
+	optional int64 participant_id = 2; // author
+	optional int64 sequence_number = 3; // ... of the map at the time of deletion
+}
+
+//------------------------------------------------------------------------------
+message Notification_DataStructure_Map_Put_PB {
+	optional string map_name = 1;
+	repeated string key = 2; // keys added to the map
+	optional int64 participant_id = 3; // author
+	optional int64 sequence_number = 4; // ... of the map (and also the modified keys)
+}
+
+//------------------------------------------------------------------------------
+message Notification_DataStructure_Map_Remove_PB {
+	optional string map_name = 1;
+	repeated string key = 2; // keys removed from the map
+	optional int64 participant_id = 3; // author
+	optional int64 sequence_number = 4; // ... of the map (and also the removed keys)
+}
+
+//------------------------------------------------------------------------------
+message Notification_EndSession_PB {
+	optional int64 session_id = 1 [deprecated = true]; // will eventually be deprecated since
+	// this information is in the header.
+	// Note: session_id will be removed once we start wrapping notifications
+	// inside CollabrifyNotification_PB
+	optional int64 order_id = 2 [default = -1]; // will eventually be deprecated
+	optional int64 ended_by_participant_id = 3 [default = 0];
+}
+
+//------------------------------------------------------------------------------
+message Notification_PreventFurtherJoins_PB {
+}
+
+//------------------------------------------------------------------------------
+message Notification_RemoveParticipant_PB {
+// TODO: Stop populating this after a compatible client has been available
+// for a while
+	optional int64 participant_id = 1 [default = 0, deprecated = true];
+	optional string participant_user_id = 2 [deprecated = true];
+	optional string participant_display_name = 3 [deprecated = true];
+	optional int64 removed_by_participant_id = 4 [default = 0];
+	//NOTE: In the future (for consistency) the first few will be replaced with
+	// a single Participant_PB that has only these fields set (i.e. partially empty).
+	optional Participant_PB particpant = 5;
+}
+
+//------------------------------------------------------------------------------
+
+// These are un-ordered non-stored messages.
+message Notification_TransientMessage_PB {
+	optional bytes payload = 1;
+	optional int64 sender_participant_id = 2;
+	optional int64 timestamp = 3;
+}
+
+//------------------------------------------------------------------------------
+message Notification_OnChannelConnected_PB {
+// TODO: Stop populating these after a compatible client has been available
+// for a while
+	optional int64 current_order_id = 1 [deprecated = true];
+	repeated int64 participant_id = 2 [deprecated = true];
+	optional bool further_joins_allowed = 3 [deprecated = true];
+	// NOTE: In the future, these will be replaced with a single Session_PB,
+	// that only has the necessary fields set.
+	optional Session_PB session = 4;
+	// NOTE: Only the following Session_PB fields are set:
+	// session_id, current_order_id, participant_id(s), and still_joinable.
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+message ServletUrlExtension_PB {
+	optional string url_for_warmup = 1 [default = "/warmup" , deprecated = true];
+	optional string url_for_add_event = 3
+	[default = "/add-event", deprecated = true];
+	optional string url_for_add_participant = 5
+	[default = "/add-participant", deprecated = true];
+	optional string url_for_get_participant = 6
+	[default = "/get-participant", deprecated = true];
+	optional string url_for_create_session = 7
+	[default = "/create-session", deprecated = true];
+	optional string url_for_create_session_with_base_file = 9
+	[default = "/create-session-with-base-file", deprecated = true];
+	optional string url_for_add_to_base_file = 10
+	[default = "/add-to-base-file", deprecated = true];
+	optional string url_for_delete_session = 11
+	[default = "/delete-session", deprecated = true];
+	optional string url_for_delete_all_sessions = 13
+	[default = "/delete-all-sessions", deprecated = true];
+	optional string url_for_get_base_file = 15
+	[default = "/get-base-file", deprecated = true];
+	optional string url_for_get_from_base_file = 16
+	[default = "/get-from-base-file", deprecated = true];
+	optional string url_for_get_current_order_id = 17
+	[default = "/get-current-order-id"];
+	optional string url_for_get_event = 19
+	[default = "/get-event", deprecated = true];
+	optional string url_for_get_event_batch = 20
+	[default = "/get-event-batch", deprecated = true];
+	optional string url_for_get_last_event_by_participant = 21
+	[default = "/get-last-event-by-participant", deprecated = true];
+	optional string url_for_get_session = 23
+	[default = "/get-session", deprecated = true];
+	optional string url_for_list_accounts = 25
+	[default = "/list-accounts", deprecated = true];
+	optional string url_for_list_sessions = 29
+	[default = "/list-sessions", deprecated = true];
+	optional string url_for_remove_participant = 31
+	[default = "/remove-participant", deprecated = true];
+	optional string url_for_update_notification_id = 33
+	[default = "/update-notification-id", deprecated = true];
+	optional string url_for_end_session = 34
+	[default = "/end-session", deprecated = true];
+	optional string url_for_all_requests = 35 [default = "/request"];
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+message Request_AddEvent_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_AddEvent_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 11;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional bytes event_data = 7 [deprecated = true]; // see note
+	optional string event_type = 8; // for analytics
+	optional int32 number_of_bytes_to_follow = 9;
+
+	// Note: if event_data is not set, then number_of_bytes_to_follow must be set
+	// and must be greater than zero.
+
+	// This is assigned by the client and exposed to the app.
+	// When the app wants to send an event, the client provides this registration ID.
+	// After the event has been committed on the backend, the registration ID
+	// is included in the Notification_AddEvent_PB and in the Response_AddEvent_PB.
+	optional int32 submission_registration_id = 10;
+}
+
+message Response_AddEvent_PB {
+	optional int64 new_event_order_id = 1 [default = -1];
+	optional int64 current_order_id = 2 [default = -1];
+	optional int64 timestamp = 4;
+
+	// This is assigned by the client and exposed to the app.
+	// When the app wants to send an event, the client provides this registration ID.
+	// After the event has been committed on the backend, the registration ID
+	// is included in the Notification_AddEvent_PB and in the Response_AddEvent_PB.
+	optional int32 submission_registration_id = 3;
+}
+
+//------------------------------------------------------------------------------
+message EventSubmission_PB {
+	optional bytes payload = 1;
+	optional string event_type = 2; // set by app, used for analytics
+	optional int32 submission_registration_id = 3;
+	optional bool is_signal = 4;
+}
+
+message EventSubmissionResponse_PB {
+	optional int64 order_id = 1 [default = -1];
+	optional int32 submission_registration_id = 2;
+	optional int64 timestamp = 3; // creationDate in CollabrifyEvent_DS
+}
+
+message Request_AddEventBatch_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional int32 number_of_event_submissions_to_follow = 2; // Must be > 0
+}
+
+message Response_AddEventBatch_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	repeated EventSubmissionResponse_PB event_submission_response = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_AddParticipant_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_AddParticipant_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	optional AccessInfo_PB access_info = 12;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional string participant_user_id = 6 [deprecated = true];
+	optional string participant_display_name = 7;
+	optional NotificationMediumType_PB participant_notification_medium_type = 8
+	[default = NOTIFICATION_MEDIUM_TYPE_NOT_SET]; // see note
+	optional string participant_notification_id = 9;
+
+	//NOTE: if participant_notification_type == REMOTE_SERVLET, then this field
+	// must be set. CollabrifyNotification_PB's will be sent here as Http POSTs.
+	optional string participant_remote_servlet_notification_url = 10;
+
+	// Note: If this field is set and owner_notification_type == REMOTE_SERVLET,
+	// then collabrify-cloud will make a POST reqeust here to get a notification
+	// id (Uses Reqeust_GetChannelToken_PB).
+	optional string participant_remote_servlet_get_notification_id_url = 11;
+}
+
+message Response_AddParticipant_PB {
+	optional Session_PB session = 1;
+	optional Participant_PB participant = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_AddToBaseFile_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_AddToBaseFile_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 10;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional bool flag__base_file_complete = 7;
+	optional bytes base_file_addition = 8 [deprecated = true]; // see note
+	optional int32 number_of_bytes_to_follow = 9; // see note
+
+	// NOTE:
+	// If the base_file_addition field is not set, then "number_of_bytes_to_follow"
+	// must be greater than zero, and there must be at least that number of bytes
+	// left in the stream.
+
+	// NOTE:
+	// Clients must wait for this request to finish before attempting add more data
+	// to the base file. If multiple AddToBaseFile requests are made in parallel
+	// for the same base file, there is no guarantee the order in which the chunks will
+	// be added, or if the request(s) will even complete.
+}
+
+message Response_AddToBaseFile_PB {
+	optional int32 base_file_size = 1;
+}
+
+//------------------------------------------------------------------------------
+message Request_CreateSession_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true]; // use AccessInfo instead
+	optional string access_token = 3 [deprecated = true]; // use AccessInfo instead
+
+	// AccessInfo for Request_CreateSession_PB:
+	// - applicationID
+	// - userID
+	optional AccessInfo_PB access_info = 16;
+	//
+	repeated string session_tag = 4;
+	optional string session_name = 5;
+	optional string session_password = 6; // DO NOT SET WITH EMPTY STRING
+	optional string owner_user_id = 7 [deprecated = true]; // use AccessInfo instead
+	optional string owner_display_name = 8;
+	optional NotificationMediumType_PB owner_notification_medium_type = 9
+	[default = NOTIFICATION_MEDIUM_TYPE_NOT_SET]; // see note
+	optional string owner_notification_id = 10;
+	optional int32 participant_limit = 11 [default = 0];
+	optional string session_type = 14; // alias for base_file_type
+
+	// BaseFile fields
+	// New-style requests should use these fields instead of a separate CreateSessionWithBaseFile request.
+	optional bool flag__session_has_base_file = 17;
+	optional bool flag__base_file_complete = 18;
+	optional int32 number_of_bytes_to_follow = 19;
+
+	// This is for app usage in determining compatibility
+	optional string app_version = 15;
+
+	//NOTE: if owner_notification_type == REMOTE_SERVLET, then this field
+	// must be set. CollabrifyNotification_PB's will be sent here as Http POSTs.
+	optional string owner_remote_servlet_notification_url = 12;
+
+	// Note: If this field is set and owner_notification_type == REMOTE_SERVLET,
+	// then collabrify-cloud will make a POST reqeust here to get a notification
+	// id (Uses Reqeust_GetChannelToken_PB).
+	optional string owner_remote_servlet_get_notification_id_url = 13;
+}
+
+message Response_CreateSession_PB {
+	optional Session_PB session = 1;
+	optional Participant_PB owner = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_CreateSessionWithBaseFile_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true]; // use AccessInfo instead
+	optional string access_token = 3 [deprecated = true]; // use AccessInfo instead
+
+
+	// AccessInfo for Request_CreateSessionWithBaseFile_PB:
+	// - applicationID
+	// - userID
+	optional AccessInfo_PB access_info = 19;
+	//
+	repeated string session_tag = 4;
+	optional string session_name = 5;
+	optional string session_password = 6; // DO NOT SET WITH EMPTY STRING
+	optional string owner_user_id = 7 [deprecated = true]; // use AccessInfo instead
+	optional string owner_display_name = 8;
+	optional NotificationMediumType_PB owner_notification_medium_type = 9
+	[default = NOTIFICATION_MEDIUM_TYPE_NOT_SET]; // see note
+	optional string owner_notification_id = 10;
+
+	// If base_file_complete is true, then either base_file or number_of_bytes_to_follow must be set.
+	optional bool base_file_complete = 11 [default = true];
+	optional bytes base_file = 12; // see note
+	optional string session_type = 15; // alias for base file type
+	optional int32 participant_limit = 13 [default = 0];
+	optional int32 number_of_bytes_to_follow = 14;
+
+	// This is for app usage in determining compatibility
+	optional string app_version = 18;
+
+	//NOTE: if owner_notification_type == REMOTE_SERVLET, then this field
+	// must be set. CollabrifyNotification_PB's will be sent here as Http POSTs.
+	optional string owner_remote_servlet_notification_url = 16;
+
+	// Note: If this field is set and owner_notification_type == REMOTE_SERVLET,
+	// then collabrify-cloud will make a POST reqeust here to get a notification
+	// id (Uses Reqeust_GetChannelToken_PB).
+	optional string owner_remote_servlet_get_notification_id_url = 17;
+
+	// NOTE:
+	// If the base_file field is not set, then "number_of_bytes_to_follow"
+	// must be greater than zero, and there must be at least that number of bytes
+	// left in the stream.
+}
+
+message Response_CreateSessionWithBaseFile_PB {
+	optional Session_PB session = 1;
+	optional Participant_PB owner = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_CreateOrGetUser_PB {
+
+// AccessInfo for Request_CreateOrGetUser_PB:
+// - applicationID
+// Note: userID is set in the request itself instead of AccessInfo.
+	optional AccessInfo_PB access_info = 1;
+	//
+	optional string user_id = 2;
+
+	// If false AND user does not exist, throws USER_DOES_NOT_EXIST.
+	optional bool create_if_does_not_exist = 3;
+}
+
+message Response_CreateOrGetUser_PB {
+	optional User_PB user = 1;
+
+	// This is only populated if Request_CreateOrGetUser.create_if_does_not_exist
+	// is set to true
+	optional bool flag__user_already_exists = 2;
+}
+
+//------------------------------------------------------------------------------
+// Throws USER_DOES_NOT_EXIST if no such user.
+message Request_UpdateUser_PB {
+//
+// AccessInfo for Request_UpdateUser_PB:
+// - applicationID
+// - userID
+	optional AccessInfo_PB access_info = 1;
+	//
+	optional User_PB user = 2;
+}
+
+message Response_UpdateUser_PB {
+}
+
+//------------------------------------------------------------------------------
+
+// NOTE: This should not be exposed in the API.
+// It is for testing purposes only (i.e. testing CreateOrGetUser)
+message Request_DeleteUser_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string user_id = 2;
+}
+
+message Response_DeleteUser_PB {
+}
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+message Request_DataStructure_Map_Create_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string map_name = 2;
+	repeated CollabrifiedMapEntry_PB entry = 3; // allowed to have 0 items
+}
+
+message Response_DataStructure_Map_Create_PB {
+}
+
+//------------------------------------------------------------------------------
+message Request_DataStructure_Map_Delete_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string map_name = 2;
+}
+
+message Response_DataStructure_Map_Delete_PB {
+	optional int64 sequence_number = 1; // current sequence number of map
+	repeated string key = 2; // keys in the map at deletion time
+}
+
+//------------------------------------------------------------------------------
+message Request_DataStructure_Map_Get_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string map_name = 2;
+
+	// Only one of these should be set
+	// @param key list of keys to fetch values for. If set, must have size >= 1
+	// @param min_sequence_number all entries with this sequence number or greater will be returned.
+	repeated string key = 3;
+	optional int64 min_sequence_number = 4;
+}
+
+message Response_DataStructure_Map_Get_PB {
+	optional int64 sequence_number = 1; // current sequence number of map
+	repeated CollabrifiedMapEntry_PB entry = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_DataStructure_Map_Put_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string map_name = 2;
+	repeated CollabrifiedMapEntry_PB entry = 3; // must have at least one item
+}
+
+message Response_DataStructure_Map_Put_PB {
+	optional int64 sequence_number = 1; // current sequence number of map
+
+	// If the key didn't exist previously, neither the value nor the sequence number
+	// in an entry will be set.
+	repeated CollabrifiedMapEntry_PB old_entry = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_DataStructure_Map_Remove_PB {
+	optional AccessInfo_PB access_info = 1;
+	optional string map_name = 2;
+	repeated string key = 3;
+}
+
+message Response_DataStructure_Map_Remove_PB {
+	optional int64 sequence_number = 1;
+
+	// The value in an entry will _not_ be set if the key didn't exist.
+	repeated CollabrifiedMapEntry_PB removed_entry = 2;
+}
+
+//------------------------------------------------------------------------------
+
+
+//------------------------------------------------------------------------------
+
+// DEPRECATED
+message Request_DeleteAllSessions_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string account_password = 3;
+}
+
+// DEPRECATED
+message Response_DeleteAllSessions_PB {
+}
+
+//------------------------------------------------------------------------------
+message Request_DeleteSession_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_DeleteSession_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID	(owner)
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+}
+
+message Response_DeleteSession_PB {
+}
+
+//------------------------------------------------------------------------------
+message Request_EndSession_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_EndSession_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 owner_id = 6 [default = 0, deprecated = true];
+}
+
+message Response_EndSession_PB {
+	optional int64 current_order_id = 1 [default = -1];
+}
+
+//------------------------------------------------------------------------------
+message Request_GetBaseFile_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+	//
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0];
+	optional string session_password = 5;
+	optional int64 participant_id = 6 [default = 0];
+}
+
+message Response_GetBaseFile_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	optional bytes base_file_data = 2; // see note
+	optional int32 number_of_bytes_to_follow = 3;
+	// NOTE:
+	// If the base_file_data field is not set, then "number_of_bytes_to_follow"
+	// must be greater than zero, and there must be at least that number of bytes
+	// left in the stream.
+}
+
+//------------------------------------------------------------------------------
+message Request_GetCurrentOrderID_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+	//
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0];
+	optional string session_password = 5;
+	optional int64 participant_id = 6 [default = 0];
+}
+
+message Response_GetCurrentOrderID_PB {
+	optional int64 current_order_id = 1 [default = -1];
+}
+
+//------------------------------------------------------------------------------
+message Request_GetEvent_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_GetEvent_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 8;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional int64 order_id = 7 [default = -1];
+}
+
+message Response_GetEvent_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	optional CollabrifyEvent_PB event = 2; // see note
+
+	// If the "event" field is set, then the CollabrifyEvent_PB follows this message.
+}
+
+//------------------------------------------------------------------------------
+message Request_GetEventBatch_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_GetEventBatch_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 9;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional int64 starting_order_id = 7 [default = -1];
+	optional int64 ending_order_id = 8 [default = -1];
+}
+
+message Response_GetEventBatch_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	optional int64 returned_starting_order_id = 2 [default = -1];
+	optional int64 returned_ending_order_id = 3 [default = -1];
+	repeated CollabrifyEvent_PB event = 4;
+	optional int32 number_of_events_to_follow = 5;
+}
+
+//------------------------------------------------------------------------------
+message Request_GetFromBaseFile_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_GetFromBaseFile_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 9;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional int32 start_position = 7;
+	optional int32 length = 8;
+}
+
+message Response_GetFromBaseFile_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	optional int32 returned_start_position = 2;
+	optional int32 returned_length = 3;
+	optional bool more_data_flag = 4 [default = true];
+	optional bytes base_file_chunk = 5; // see note
+
+	// NOTE:
+	// If the base_file_chunk field is not set, then "returned_length"
+	// must be greater than zero, and there must be at least that number of bytes
+	// left in the stream.
+}
+
+//------------------------------------------------------------------------------
+message Request_GetLastEventByParticipant_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+	//
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0];
+	optional string session_password = 5;
+	optional int64 participant_id = 6 [default = 0];
+}
+
+message Response_GetLastEventByParticipant_PB {
+	optional int64 current_order_id = 1 [default = -1];
+	optional CollabrifyEvent_PB event = 2;
+}
+
+//------------------------------------------------------------------------------
+// NOTE: FOR REMOTE SERVLET CLIENTS. This one is specifically for a request being SENT TO mydesk-cloud, with
+// the response being RETURNED TO collabrify-cloud.
+message Request_GetNotificationID_PB {
+	optional string client_id = 1;
+}
+
+message Response_GetNotificationID_PB {
+	optional string client_id = 1;
+	optional string notification_id = 2; // e.g. channel token
+}
+
+//------------------------------------------------------------------------------
+message Request_GetParticipant_PB {
+	optional string account_gmail = 1 [deprecated = true];
+	optional string access_token = 2 [deprecated = true];
+
+	// AccessInfo for Request_GetParticipant_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	optional AccessInfo_PB access_info = 6;
+	//
+	optional int64 session_id = 3 [default = 0, deprecated = true];
+	optional string session_password = 4 [deprecated = true];
+	repeated int64 participant_id = 5;
+}
+
+// NOTE: Invalid (or previously-removed) participantID's are ignored.
+// The response will Only contain Participants that are currently in the session.
+message Response_GetParticipant_PB {
+	repeated Participant_PB participant = 1;
+	optional int64 current_order_id = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_GetSession_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_GetSession_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	optional AccessInfo_PB access_info = 6;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+}
+
+message Response_GetSession_PB {
+	optional Session_PB session = 1;
+}
+
+//------------------------------------------------------------------------------
+
+// // DEPRECATED
+//// TODO: This will go away
+//message Request_ListAccounts_PB {
+//	repeated GenericProperty_PB property = 1;
+//	// No parameters at this time
+//}
+//
+//message Response_ListAccounts_PB {
+//	repeated Account_PB account = 1;
+//}
+
+//------------------------------------------------------------------------------
+// NOTE: The "SUBSET" query is only valid for searching within organizations.
+// The "EXACT" query (i.e. not Subset) can be used within an organization,
+// or across all organizations.
+// NOTE: The session_type value is not required but can be used to help filter
+// sessions within an organization or across all organizations.
+message Request_ListSessions_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for ListSessions:
+	// - applicationID
+	// - userID
+	optional AccessInfo_PB access_info = 10;
+
+	// Cannot be empty
+	repeated string session_tag = 4;
+
+	// If sessionType is set, it should not be empty.
+	optional string session_type = 8;
+
+	// This flag is the conceptual OPPOSITE of "Use Tags as EXACT MATCH".
+	// Searching for an exact match is more efficient which is why this flag defaults to false.
+	// If this flag is true, provided tags serve as filters.
+	//   Ex: There are multiple sessions that have various combinations of the tags: Apple, Banana, & Pear.
+	//   The client can search for sessions that have AT LEAST Apple & Banana as tags.
+	//   The results will also include sessions that have the Pear tag in addition to the Apple/Banana tags.
+	// If this flag is false, an exact match will be searched for.
+	//   Ex: There are multiple sessions that have various combinations of the tags: Apple, Banana, & Pear.
+	//   The client can search for sessions that have EXACTLY Apple & Banana as tags.
+	//   The results will NOT include sessions that have the Pear tag in addition to the Apple/Banana tags.
+	optional bool flag__use_tags_as_filters = 5 [default = false];
+
+	// Currently this still needs to be set, but eventually it will not be required
+	// for requests that use AccessInfo.
+	optional bool limit_query_to_organization_account = 6 [default = true];
+
+	//
+	optional bool flag__include_sessions_with_incomplete_base_files = 9
+	[default = false];
+}
+
+message Response_ListSessions_PB {
+	repeated Session_PB session = 1;
+	optional string cursor = 2 [deprecated = true];
+}
+
+//------------------------------------------------------------------------------
+message Request_PreventFurtherJoins_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_PreventFurtherJoins_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 7;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+}
+
+message Response_PreventFurtherJoins_PB {
+}
+
+//------------------------------------------------------------------------------
+message Request_RemoveParticipant_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_RemoveParticipant_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 8;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 accessing_participant_id = 6 [default = 0, deprecated = true];
+	optional int64 to_be_removed_participant_id = 7 [default = 0];
+}
+
+message Response_RemoveParticipant_PB {
+	optional Participant_PB removedParticipant = 1;
+	optional int64 current_order_id = 2 [default = -1];
+}
+
+//------------------------------------------------------------------------------
+enum TransientMessageType_PB {
+	TRANSIENT_MESSAGE_TYPE_NOT_SET = 0;
+	SEND_TO_USER = 1; // One user across all active sessions
+	SEND_TO_PARTICIPANT_IN_SESSION = 2; // One participant in a specific session
+	SEND_TO_SESSION = 3; // All participants in a specific session
+	SEND_TO_ALL_ACTIVE_SESSIONS = 4; // All participants across all active sessions
+}
+
+message Request_SendTransientMessage_PB {
+// application_id: ALWAYS REQUIRED.
+// user_id: ALWAYS REQUIRED.
+// session_id: Required if using SEND_TO_PARTICIPANT_IN_SESSION, SEND_TO_SESSION.
+// session_password: Required if using SEND_TO_PARTICIPANT_IN_SESSION, SEND_TO_SESSION.
+	optional AccessInfo_PB access_info = 1;
+	optional TransientMessageType_PB message_type = 2;
+	optional bytes payload = 3;
+}
+
+message Response_SendTransientMessage_PB {
+}
+
+//------------------------------------------------------------------------------
+// Can be used for reconnect
+message Request_UpdateNotificationID_PB {
+	repeated GenericProperty_PB property = 1;
+	optional string account_gmail = 2 [deprecated = true];
+	optional string access_token = 3 [deprecated = true];
+
+	// AccessInfo for Request_UpdateNotificationID_PB:
+	// - applicationID
+	// - sessionID
+	// - sessionPassword (if password protected)
+	// - userID
+	// - participantID
+	optional AccessInfo_PB access_info = 10;
+	//
+	optional int64 session_id = 4 [default = 0, deprecated = true];
+	optional string session_password = 5 [deprecated = true];
+	optional int64 participant_id = 6 [default = 0, deprecated = true];
+	optional NotificationMediumType_PB participant_notification_medium_type = 7
+	[default = NOTIFICATION_MEDIUM_TYPE_NOT_SET]; // see note
+
+	// The Client may be using this request to reestablish a broken channel.
+	// Alternatively, the client may be re-joining an old session... if this is the case, then the Client
+	// should set this flag so that the user's presence is announced (with a Notification_AddParticipant).
+	optional bool flag__broadcast_presence = 11;
+
+	//	// NOTE: if participant_notification_type != REMOTE_SERVLET, then
+	//	// participant_notification_id is the channel token
+	//	optional string participant_notification_id = 8;
+	//
+	//	//NOTE: if participant_notification_type == REMOTE_SERVLET, then this field
+	//	// must be set. CollabrifyNotification_PB's will be sent here as Http POSTs.
+	//	optional string participant_notification_url = 9;
+}
+
+message Response_UpdateNotificationID_PB {
+	optional Session_PB session = 1;
+	optional Participant_PB participant = 2;
+}
+
+//------------------------------------------------------------------------------
+message Request_Warmup_PB {
+}
+
+message Response_Warmup_PB {
+}
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// THE REST OF THIS FILE IS FOR BACKEND-USE ONLY
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+enum CollabrifyTaskRequestType_PB {
+	TASK_TYPE_NOT_SET = 0;
+	DELETE_SESSION_TASK = 1;
+}
+
+//------------------------------------------------------------------------------
+message CollabrifyTaskRequestHeader_PB {
+	optional CollabrifyTaskRequestType_PB task_type = 1;
+
+	// NOTE:
+	// The bytes that immediately follow this message are the actual delimited
+	// request PB message.
+}
+
+message CollabrifyTaskResponseHeader_PB {
+	optional bool success_flag = 1;
+	optional CollabrifyExceptionType_PB exception_type = 2;
+	optional Exception_PB exception = 3;
+	optional string backend_version = 4;
+	optional int64 timestamp = 5;
+}
+
+//------------------------------------------------------------------------------
+message TaskRequest_DeleteSession_PB {
+	optional int64 session_id = 1;
+}
+
+//------------------------------------------------------------------------------
+message TaskRequest_UpdateUsageForApplication_PB {
+	optional int64 application_id = 1;
+	optional int64 bytes_sent = 2;
+}
+
+//------------------------------------------------------------------------------
+message TaskRequest_UpdateUsageForUser_PB {
+	optional int64 application_id = 1;
+	optional string user_id = 2;
+	optional int64 bytes_sent = 3;
+}
+
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+
+
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------

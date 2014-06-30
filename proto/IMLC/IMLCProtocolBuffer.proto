@@ -1,0 +1,156 @@
+option java_package = "edu.umich.imlc.protocolbuffer";
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+message StackTraceElement_PB {
+	optional string class_name = 1;
+	optional string method_name = 2;
+	optional string file_name = 3;
+	optional int32 line_number = 4;
+}
+
+// -----------------------------------------------------------------------------
+message Exception_PB {
+	repeated StackTraceElement_PB stack_trace_element = 1;
+	optional string exception_type = 2;
+	optional string message = 3;
+	optional Exception_PB cause = 4;
+}
+
+// -----------------------------------------------------------------------------
+enum ClientDeviceType_PB
+{
+	ANDROID = 0;
+	IOS = 1;
+	WINDOWS_PHONE = 2;
+	BROWSER = 3;
+}
+
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+
+// This replaces SimpleProperty in "General/ProtocolBufferTransport.proto"
+// The two are byte compatible.
+message SimpleProperty_PB {
+    optional string property_name = 1;
+    optional string property_value = 2;
+}
+
+// -----------------------------------------------------------------------------
+
+// This replaces ProtocolBufferScalarType in "General/ProtocolBufferTransport.proto"
+// The two are byte compatible. This one adds two new fields for nested properties.
+enum GenericPropertyType_PB {
+	PROPERTY_TYPE_NOT_SET = 0;
+    STRING = 1;
+    BOOLEAN = 2;
+    BYTES = 3;
+    DOUBLE = 4;
+    FLOAT = 5;
+    INT32 = 6;
+    INT64 = 7;
+    SINT32 = 8;
+    SINT64 = 9;
+    UINT32 = 10;
+    UINT64 = 11;
+    SFIXED32 = 12;
+    SFIXED64 = 13;
+    FIXED32 = 14;
+    FIXED64 = 15;
+    NESTED_PROPERTY = 31;
+    STRING_LIST = 16;
+    BOOL_LIST = 17;
+    BYTES_LIST = 18;
+    DOUBLE_LIST = 19;
+    FLOAT_LIST = 20;
+    INT32_LIST = 21;
+    INT64_LIST = 22;
+    SINT32_LIST = 23;
+    SINT64_LIST = 24;
+    UINT32_LIST = 25;
+    UINT64_LIST = 26;
+    SFIXED32_LIST = 27;
+    SFIXED64_LIST = 28;
+    FIXED32_LIST = 29;
+    FIXED64_LIST = 30;
+    NESTED_PROPERTY_LIST = 32;
+}
+
+// -----------------------------------------------------------------------------
+
+// This replaces GenericProperty in "General/ProtocolBufferTransport.proto"
+// The two are byte compatible. This one adds two new fields for nested properties.
+// The property_name can be left unset.
+message GenericProperty_PB {
+    optional string property_name = 1;
+    optional GenericPropertyType_PB property_type = 2;
+    optional string string_value = 3;
+    optional bool bool_value = 4;
+    optional bytes bytes_value = 5;
+    optional double double_value = 6;
+    optional float float_value = 7;
+    optional int32 int32_value = 8;
+    optional int64 int64_value = 9;
+    optional sint32 sint32_value = 10;
+    optional sint64 sint64_value = 11;
+    optional uint32 uint32_value = 12;
+    optional uint64 uint64_value = 13;
+    optional sfixed32 sfixed32_value = 14;
+    optional sfixed64 sfixed64_value = 15;
+    optional fixed32 fixed32_value = 16;
+    optional fixed64 fixed64_value = 17;
+    optional GenericProperty_PB nested_property_value = 33;
+    repeated string string_element = 18;
+    repeated bool bool_element = 19;
+    repeated bytes bytes_element = 20;
+    repeated double double_element = 21;
+    repeated float float_element = 22;
+    repeated int32 int32_element = 23;
+    repeated int64 int64_element = 24;
+    repeated sint32 sint32_element = 25;
+    repeated sint64 sint64_element = 26;
+    repeated uint32 uint32_element = 27;
+    repeated uint64 uint64_element = 28;
+    repeated sfixed32 sfixed32_element = 29;
+    repeated sfixed64 sfixed64_element = 30;
+    repeated fixed32 fixed32_element = 31;
+    repeated fixed64 fixed64_element = 32;
+    repeated GenericProperty_PB nested_property_element = 34;
+}
+
+// -----------------------------------------------------------------------------
+// DEPRECATED - This type will be removed in April 2014
+// Note: All times must be in UTC
+message Time_PB {
+    optional int32 hours = 1 [default = 0];
+    optional int32 minutes = 2 [default = 0];
+    optional int32 seconds = 3 [default = 0];
+
+	// No longer using this. All times must be in UTC
+    optional int32 utc_offset = 4 [deprecated = true];
+}
+
+// -----------------------------------------------------------------------------
+// DEPRECATED - This type will be removed in April 2014
+// Note: All times/dates must be in UTC
+message Date_PB {
+    optional int32 year = 1 [default = 0];
+    optional int32 month = 2 [default = 0];
+    optional int32 day = 3 [default = 0];
+
+    // Note: If provided, this must be in UTC.
+    optional Time_PB time = 4;
+}
+
+// -----------------------------------------------------------------------------
+// DEPRECATED - This type will be removed in April 2014
+//enum DayOfWeekType_PB {
+//    DAY_OF_WEEK_NOT_SET = 0;
+//    SUNDAY = 1;
+//    MONDAY = 2;
+//    TUESDAY = 3;
+//    WEDNESDAY = 4;
+//    THURSDAY = 5;
+//    FRIDAY = 6;
+//    SATURDAY = 7;
+//}
+// -----------------------------------------------------------------------------

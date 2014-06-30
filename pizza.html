@@ -28,13 +28,13 @@
 	  <li><input checked="true" type='checkbox' onclick='toggle_topping(this)' id='xcheese' value='xcheese' title='Extra Cheese'/>Extra Cheese</li> 
 	</ul>
 	<input type="text"></input>
+	<input type='button' onclick='simulate_reconnect()' id='reconnect' title='Reconnect' value='reconnect'/>
 	<div></div>
 	<video id='localVideo'></video>
 	<div id="remoteVideos"></div>
-	<script type="text/javascript" src="./ot-min.js"></script>
 	<script src="http://simplewebrtc.com/latest.js"></script>
 	<script src="https://www.promisejs.org/polyfills/promise-4.0.0.js"></script>
-	<script type='text/javascript' src='./collabrify-3.0.0.js'></script>
+	<script type='text/javascript' src='http://collabrify-client-js.appspot.com/static/collabrify-3.0.0-beta1/collabrify.js'></script>
 	<script type='text/javascript'>
 	data = {
 		toppings:{
@@ -48,24 +48,45 @@
 	};
 	var c = new CollabrifyClient({
 		application_id: '4891981239025664',
-		user_id: 'collabrify.tester@gmail.com'
+		user_id: 'collabrify-tester@gmail.com'
 	})
-	c.createSession({
-		name: 'pizza_demo5',// + Math.random().toString(),
-		password: 'password',
-		tags: ['pizzza3'],
-		startPaused: false
-	})
-	.catch(function(){
-		console.log('listing sessions');
-		c.listSessions(['pizzza3'])
-		.then(function(sessions){
-			c.joinSession({session:sessions[0], password: 'password'});
-		});
-	});
+    
+    if(!window.location.hash)
+    {
+        //no session id specified, create one at random
+        c.createSession({
+            name: 'pizza_demo'+ Math.random().toString(),
+            password: 'password',
+            tags: ['pizzza'],
+            startPaused: false
+        })
+        .then(function(session){
+            console.log(session);
+            history.pushState(null,null,'#'+session.session_id);
+        })
+        .catch(function(error){
+            console.log(error);
+            console.log('listing sessions');
+            c.listSessions(['pizzza'])
+            .then(function(sessions){
+                c.joinSession({session:sessions[0], password: 'password'});
+            });
+        });
+    }
+    else
+    {
+        //join the session
+        var session_id = window.location.hash.replace('#', '');
+        c.joinSession({session:{session_id:session_id}, password: 'password'})
+        .then(function(session){
+            console.log(session);
+            history.pushState(null,null,'#'+session.session_id);
+        });
+    }
 
 	c.on('event',function(event){
-		eventData = event.data()
+		eventData = event.data();
+        console.log(eventData);
 		for(var key in eventData.toppings){
 			data.toppings[key] = eventData.toppings[key]
 			document.getElementById(key).checked = data.toppings[key]
@@ -77,6 +98,11 @@
 	c.on('user_joined', function(user){
 		console.log(user);
 	});
+    
+    c.on('user_left', function(user){
+        console.log(user);
+    });
+    
 	c.on('error', function(e){
 		console.log(e);
 	});
@@ -98,7 +124,11 @@
 		});
 	};
 
-	var webrtc = new SimpleWebRTC({
+	simulate_reconnect = function (){
+		c.session.socket.onerror('error');
+	}
+	
+	/*var webrtc = new SimpleWebRTC({
 	    // the id/element dom element that will hold "our" video
 	    localVideoEl: 'localVideo',
 	    // the id/element dom element that will hold remote videos
@@ -109,7 +139,15 @@
 	webrtc.on('readyToCall', function () {
     	// you can name it anything
     	webrtc.joinRoom('potleepizza-5279308758230457');
-	});
+	});*/
+    
+    window.onbeforeunload = function()
+    {
+        if(c.session)
+        {
+            c.leaveSession();
+        }
+    }
 	</script>
 </body>
 

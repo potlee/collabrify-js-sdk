@@ -1,7 +1,7 @@
 ByteBuffer = require './ByteBuffer.js'
 ProtoBuf = require "./ProtoBuf.js"
 http = require 'http'
-builder = ProtoBuf.loadProtoFile "protocol-buffers/proto/Collabrify-v2/CollabrifyProtocolBuffer.proto"
+builder = ProtoBuf.loadProtoFile "http://collabrify-client-js.appspot.com/static/collabrify-3.0.0-beta1/proto/CollabrifyProtocolBuffer.proto"
 RequestType = builder.build "CollabrifyRequestType_PB"
 module.exports.RequestType = RequestType
 RequestHeader = builder.build 'CollabrifyRequest_PB'
@@ -20,7 +20,7 @@ module.exports.AddEventResponse = builder.build 'Response_AddEvent_PB'
 module.exports.CollabrifyNotification = builder.build 'CollabrifyNotification_PB'
 module.exports.Notification_AddEvent = builder.build 'Notification_AddEvent_PB'
 module.exports.Notification_AddParticipant = builder.build 'Notification_AddParticipant_PB'
-module.exports.Notification_RemoveParticipant = builder.build 'Notification_RemoveParticipantB'
+module.exports.Notification_RemoveParticipant = builder.build 'Notification_RemoveParticipant_PB'
 module.exports.Notification_OnChannelConnected = builder.build 'Notification_OnChannelConnected_PB'
 module.exports.NotificationMessageType = builder.build 'NotificationMessageType_PB'
 module.exports.AddParticipantRequest = builder.build 'Request_AddParticipant_PB'
@@ -37,6 +37,8 @@ module.exports.AddToBaseFileRequest = builder.build 'Request_AddToBaseFile_PB'
 module.exports.AddToBaseFileResponse = builder.build 'Response_AddToBaseFile_PB'
 module.exports.GetFromBaseFileRequest = builder.build 'Request_GetFromBaseFile_PB'
 module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile_PB'
+module.exports.UpdateNotificationIdRequest = builder.build 'Request_UpdateNotificationID_PB'
+module.exports.UpdateNotificationIdResponse = builder.build 'Response_UpdateNotificationID_PB'
 module.exports.Event = builder.build 'CollabrifyEvent_PB'
 global.host = '166.collabrify-cloud.appspot.com'
 
