@@ -12966,7 +12966,7 @@ c.push(e<<2|f>>4);64!=g&&(c.push(f<<4&240|g>>2),64!=k&&c.push(g<<6&192|k))}this.
 p("goog.appengine.Channel.prototype.open",He.prototype.open,void 0);p("chat.WcsCrossPageChannel",De,void 0); module.exports = goog; })()
 },{}],37:[function(require,module,exports){
 (function (global){
-var ByteBuffer, ProtoBuf, RequestHeader, RequestType, ResponseHeader, builder, http, requestQueue, requestSynch;
+var ByteBuffer, ClientVersion, ProtoBuf, RequestHeader, RequestType, ResponseHeader, builder, http, requestQueue, requestSynch;
 
 ByteBuffer = require('./ByteBuffer.js');
 
@@ -12974,7 +12974,7 @@ ProtoBuf = require("./ProtoBuf.js");
 
 http = require('http');
 
-builder = ProtoBuf.loadProtoFile("http://collabrify-client-js.appspot.com/static/collabrify-3.0.0-beta1/proto/CollabrifyProtocolBuffer.proto");
+builder = ProtoBuf.loadProtoFile("./proto/CollabrifyProtocolBuffer.proto");
 
 RequestType = builder.build("CollabrifyRequestType_PB");
 
@@ -13052,6 +13052,10 @@ module.exports.UpdateNotificationIdResponse = builder.build('Response_UpdateNoti
 
 module.exports.Event = builder.build('CollabrifyEvent_PB');
 
+ClientVersion = "3.0.1";
+
+module.exports.ClientVersion = ClientVersion;
+
 global.host = '166.collabrify-cloud.appspot.com';
 
 module.exports.chunkSize = 1024 * 1024 * 30;
@@ -13070,15 +13074,22 @@ module.exports.request = (function(_this) {
       request = http.request(http_options, function() {});
       request.xhr.responseType = 'arraybuffer';
       request.xhr.onreadystatechange = function() {
-        var buf, header;
+        var buf, e, header;
         if (request.xhr.readyState !== 4) {
           return;
         }
         if (request.xhr.status === 200) {
           if (buf = ByteBuffer.wrap(request.xhr.response)) {
             header = ResponseHeader.decodeDelimited(buf);
+            console.log(options.header);
+            console.log(header);
             if (header.success_flag) {
-              return options.ondone(buf, header);
+              try {
+                options.ondone(buf, header);
+              } catch (_error) {
+                e = _error;
+                return options.reject(e);
+              }
             } else {
               return options.reject(new Error(header.exception.exception_type + ': ' + header.exception.message));
             }
@@ -13200,6 +13211,10 @@ CollabrifyClient = (function() {
       accessInfo.participant_id = this.session.participant_id && this.session.participant_id[0] || null;
     }
     return accessInfo;
+  };
+
+  CollabrifyClient.prototype.version = function() {
+    return ClientVersion;
   };
 
   CollabrifyClient.prototype.broadcast = function(message, event_type) {
@@ -13352,6 +13367,7 @@ CollabrifyClient = (function() {
 
   CollabrifyClient.prototype.newSessionHandler = function(buf, request_type, header) {
     var p, participantsHash, response, user, _i, _len, _ref;
+    console.log(buf);
     user = request_type === 'create' ? 'owner' : 'participant';
     if (request_type === 'create') {
       response = Collabrify.CreateSessionResponse.decodeDelimited(buf);

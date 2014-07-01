@@ -1,7 +1,11 @@
 ByteBuffer = require './ByteBuffer.js'
 ProtoBuf = require "./ProtoBuf.js"
 http = require 'http'
-builder = ProtoBuf.loadProtoFile "http://collabrify-client-js.appspot.com/static/collabrify-3.0.0-beta1/proto/CollabrifyProtocolBuffer.proto"
+#Live
+#builder = ProtoBuf.loadProtoFile "http://collabrify-client-js.appspot.com/static/proto/CollabrifyProtocolBuffer.proto"
+#Local
+builder = ProtoBuf.loadProtoFile "./proto/CollabrifyProtocolBuffer.proto"
+
 RequestType = builder.build "CollabrifyRequestType_PB"
 module.exports.RequestType = RequestType
 RequestHeader = builder.build 'CollabrifyRequest_PB'
@@ -40,6 +44,8 @@ module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile
 module.exports.UpdateNotificationIdRequest = builder.build 'Request_UpdateNotificationID_PB'
 module.exports.UpdateNotificationIdResponse = builder.build 'Response_UpdateNotificationID_PB'
 module.exports.Event = builder.build 'CollabrifyEvent_PB'
+ClientVersion = "3.0.1"
+module.exports.ClientVersion = ClientVersion
 global.host = '166.collabrify-cloud.appspot.com'
 
 module.exports.chunkSize = 1024*1024*30
@@ -61,8 +67,14 @@ module.exports.request = (options) =>
 			if request.xhr.status == 200
 				if buf = ByteBuffer.wrap(request.xhr.response)#, 'base64')
 					header = ResponseHeader.decodeDelimited(buf)
+					console.log options.header
+					console.log header
 					if header.success_flag
-						options.ondone(buf, header)
+						try
+							options.ondone(buf, header)
+							return
+						catch e
+							options.reject e
 					else
 						options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
 			else
@@ -74,6 +86,7 @@ module.exports.request = (options) =>
 		request.write (new RequestHeader
 			request_type: RequestType[options.header]
 			include_timestamp_in_response: options.include_timestamp_in_response
+			#client_version: ClientVersion
 		).encodeDelimited().toBuffer()
 		request.write options.body.encodeDelimited().toBuffer()
 		request.write(options.message) if options.message?

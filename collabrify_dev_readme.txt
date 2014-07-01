@@ -30,6 +30,12 @@ collabrify_client.coffee: CollabrifyClient
 test.html: runs tests if opened in a browser
 tests_bundle.js: compiled tests script
 
+
+Appengine deployment
+deploy release/collabrify.js to appengine with path collabrify-client-js.appspot.com/static/collabrify.js
+deploy protobufs to appengine with path collabrify-client-js.appspot.com/static/proto/
+Make sure to use the right protobuf location in collabrify.coffee
+
 ios protopyting:
 $web.loadRequest(NSURLRequest.alloc.initWithURL(NSURL.URLWithString('http://0.0.0.0:8000/index.html')))
 c = $web.valueForKeyPath "documentView.webView.mainFrame.javaScriptContext"

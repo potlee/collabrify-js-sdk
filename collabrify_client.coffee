@@ -17,6 +17,7 @@ class CollabrifyClient
 			@eventEmitter.emit 'ready'
 		.catch (e) =>
 			@eventEmitter.emit 'error'
+			
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
 			application_id: @application_id
@@ -27,6 +28,9 @@ class CollabrifyClient
 			accessInfo.participant_id = @session.participant_id && @session.participant_id[0] || null 
 		accessInfo
 
+	version: ->
+		ClientVersion
+		
 	broadcast: (message, event_type) ->
 		new Promise (fulfill, reject) =>
 			srid = @submission_registration_id++
@@ -148,6 +152,7 @@ class CollabrifyClient
 						fulfill(@session)
 
 	newSessionHandler: (buf, request_type, header) ->
+		console.log buf
 		user = if request_type is 'create' then 'owner' else 'participant'
 		if request_type == 'create'
 			response = Collabrify.CreateSessionResponse.decodeDelimited(buf)
