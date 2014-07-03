@@ -16,14 +16,14 @@ class CollabrifyClient
 		.then =>
 			@eventEmitter.emit 'ready'
 		.catch (e) =>
-			@eventEmitter.emit 'error'
+			@eventEmitter.emit 'error', e
 			
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
 			application_id: @application_id
 			user_id: @user_id
 		if @session
-			accessInfo.session_password = @sessionPassword || null
+			if @sessionPassword then accessInfo.session_password = @sessionPassword
 			accessInfo.session_id = @session.session_id || null 
 			accessInfo.participant_id = @session.participant_id && @session.participant_id[0] || null 
 		accessInfo
@@ -84,7 +84,7 @@ class CollabrifyClient
 					access_info: @accessInfo()
 					session_tag: sessionProperties.tags
 					session_name: sessionProperties.name
-					session_password: @sessionPassword
+					session_password: @sessionPassword || null
 					owner_display_name: @display_name
 					number_of_bytes_to_follow: if basefile_chunks[0] then basefile_chunks[0].byteLength
 					flag__session_has_base_file: basefile_chunks.length
@@ -120,7 +120,9 @@ class CollabrifyClient
 			@sessionPassword = options.password
 			a = @accessInfo()
 			a.session_id = options.session.session_id
-			a.session_password = options.password
+			if options.password
+				a.session_password = options.password
+				@sessionPassword = options.password
 			Collabrify.request
 				header: 'ADD_PARTICIPANT_REQUEST'
 				include_timestamp_in_response: true
@@ -152,7 +154,6 @@ class CollabrifyClient
 						fulfill(@session)
 
 	newSessionHandler: (buf, request_type, header) ->
-		console.log buf
 		user = if request_type is 'create' then 'owner' else 'participant'
 		if request_type == 'create'
 			response = Collabrify.CreateSessionResponse.decodeDelimited(buf)
@@ -228,7 +229,6 @@ class CollabrifyClient
 					@eventEmitter.emit 'user_left', removeParticipant.particpant
 
 				if notification.notification_message_type == 5 #Collabrify.NotificationMessageType['ON_CHANNEL_CONNECTED_NOTIFICATION']
-					console.log 'onchannelConnect'
 					@catchup_participant_ids = {}
 					response = Collabrify.Notification_OnChannelConnected.decode64(notification.payload)
 					participantsHash = {}
@@ -257,7 +257,7 @@ class CollabrifyClient
 						body: new Collabrify.GetEventBatchRequest
 							access_info: @accessInfo()
 							starting_order_id: @eventEmitter.nextEvent
-							ending_order_id: response.current_order_id
+							ending_order_id: -1 #Get all remaining events
 						
 						ondone: (buf) =>
 							body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
@@ -268,7 +268,7 @@ class CollabrifyClient
 									event.rawData = -> event.payload.toBuffer()
 									@eventEmitter.emitOrdered 'event', event, event.order_id
 			catch e
-				console.log e
+				@eventEmitter.emit 'error', e
 				
 		@session.socket.onerror = (error) =>
 			#close socket and reconnect if still in session
@@ -286,7 +286,6 @@ class CollabrifyClient
 				#reconnect failed, reset and emit error
 				@reset()
 				error = new Error(error.description || "notifications error")
-				console.log error
 				@eventEmitter.emit 'error', error
 				
 			body: new Collabrify.UpdateNotificationIdRequest

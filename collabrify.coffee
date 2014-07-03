@@ -1,10 +1,10 @@
-ByteBuffer = require './ByteBuffer.js'
+ByteBuffer = require 'bytebuffer'
 ProtoBuf = require "./ProtoBuf.js"
 http = require 'http'
 #Live
-#builder = ProtoBuf.loadProtoFile "http://collabrify-client-js.appspot.com/static/proto/CollabrifyProtocolBuffer.proto"
+builder = ProtoBuf.loadProtoFile "http://collabrify-client-js.appspot.com/static/proto/CollabrifyProtocolBuffer.proto"
 #Local
-builder = ProtoBuf.loadProtoFile "./proto/CollabrifyProtocolBuffer.proto"
+#builder = ProtoBuf.loadProtoFile "../proto/CollabrifyProtocolBuffer.proto"
 
 RequestType = builder.build "CollabrifyRequestType_PB"
 module.exports.RequestType = RequestType
@@ -67,8 +67,6 @@ module.exports.request = (options) =>
 			if request.xhr.status == 200
 				if buf = ByteBuffer.wrap(request.xhr.response)#, 'base64')
 					header = ResponseHeader.decodeDelimited(buf)
-					console.log options.header
-					console.log header
 					if header.success_flag
 						try
 							options.ondone(buf, header)
@@ -83,11 +81,12 @@ module.exports.request = (options) =>
 		request.xhr.ontimeout = ->
 			options.reject new Error('timeout')
 
-		request.write (new RequestHeader
+		requestHeader = new RequestHeader
 			request_type: RequestType[options.header]
 			include_timestamp_in_response: options.include_timestamp_in_response
 			#client_version: ClientVersion
-		).encodeDelimited().toBuffer()
+		
+		request.write requestHeader.encodeDelimited().toBuffer()
 		request.write options.body.encodeDelimited().toBuffer()
 		request.write(options.message) if options.message?
 		request.on 'error', (e) ->

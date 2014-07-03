@@ -1,14 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        #remoteVideos video {
-            height: 100px;
-        }
-        #localVideo {
-            height: 100px;
-        }
-    </style>
 </head>
 <body>
 <div class='label'>Select pizza toppings</div> 
@@ -27,14 +19,10 @@
 	  <li><input checked="true" type='checkbox' onclick='toggle_topping(this)' id='red_peppers' value='red_peppers' title='Green Peppers'/>Red Peppers</li> 
 	  <li><input checked="true" type='checkbox' onclick='toggle_topping(this)' id='xcheese' value='xcheese' title='Extra Cheese'/>Extra Cheese</li> 
 	</ul>
-	<input type="text"></input>
 	<input type='button' onclick='simulate_reconnect()' id='reconnect' title='Reconnect' value='reconnect'/>
 	<div></div>
-	<video id='localVideo'></video>
-	<div id="remoteVideos"></div>
-	<script src="http://simplewebrtc.com/latest.js"></script>
 	<script src="https://www.promisejs.org/polyfills/promise-4.0.0.js"></script>
-	<script type='text/javascript' src='release/collabrify.js'></script>
+	<script type='text/javascript' src='http://collabrify-client-js.appspot.com/static/collabrify.js'></script>
 	<script type='text/javascript'>
 	data = {
 		toppings:{
@@ -46,6 +34,8 @@
 			xcheese: true
 		}
 	};
+	
+	//instantiate the client
 	var c = new CollabrifyClient({
 		application_id: '4891981239025664',
 		user_id: 'collabrify.tester@gmail.com'
@@ -54,37 +44,61 @@
     if(!window.location.hash)
     {
         //no session id specified, create one at random
+		var sessionName = 'pizza_demo';//+ Math.random().toString()
         c.createSession({
-            name: 'pizza_demo'+ Math.random().toString(),
-            password: 'password',
+            name: sessionName,
             tags: ['pizzza'],
             startPaused: false
         })
         .then(function(session){
+			//once the session is created, display it's id in the url as #<session id>
             console.log(session);
             history.pushState(null,null,'#'+session.session_id);
         })
         .catch(function(error){
-            console.log(error);
+			//session might already exist, so try to find it and join it
             console.log('listing sessions');
             c.listSessions(['pizzza'])
             .then(function(sessions){
-                c.joinSession({session:sessions[0], password: 'password'});
-            });
+				for(var i = 0; i < sessions.length; ++i){
+					if(sessionName == sessions[i].session_name){
+						c.joinSession({session:sessions[i]})
+						.then(function(session){
+							//display the session id in the url as #<session id>
+							console.log(session);
+							history.pushState(null,null,'#'+session.session_id);
+						})
+						.catch(function(error){
+							console.log(error);
+						});
+						return;
+					}
+				}
+				//can't find a session with that name, print error to console
+				console.log(error);
+            })
+			.catch(function(error){
+				//encountered error when trying to list sessions
+				console.log(error);
+			});
         });
     }
     else
     {
-        //join the session
+        //join the session specified in the url
         var session_id = window.location.hash.replace('#', '');
-        c.joinSession({session:{session_id:session_id}, password: 'password'})
+        c.joinSession({session:{session_id:session_id}})
         .then(function(session){
             console.log(session);
             history.pushState(null,null,'#'+session.session_id);
-        });
+        })
+		.catch(function(error){
+			console.log(error);
+		});
     }
 
 	c.on('event',function(event){
+		//received an event, update our checkboxes
 		eventData = event.data();
         console.log(eventData);
 		for(var key in eventData.toppings){
@@ -106,9 +120,12 @@
 	c.on('error', function(e){
 		console.log(e);
 	});
+	
 	c.on('notifications_start', function(){
+		//start receiving real time updates
 		console.log('start');
 	});
+	
 	var x;
 	toggle_topping = function (cb) {
 		document.getElementById(cb.value+'_image').style.visibility = (cb.checked ? "": "hidden");
@@ -127,19 +144,6 @@
 	simulate_reconnect = function (){
 		c.session.socket.onerror('error');
 	}
-	
-	/*var webrtc = new SimpleWebRTC({
-	    // the id/element dom element that will hold "our" video
-	    localVideoEl: 'localVideo',
-	    // the id/element dom element that will hold remote videos
-	    remoteVideosEl: 'remoteVideos',
-	    // immediately ask for camera access
-	    autoRequestMedia: true
-	});
-	webrtc.on('readyToCall', function () {
-    	// you can name it anything
-    	webrtc.joinRoom('potleepizza-5279308758230457');
-	});*/
     
     window.onbeforeunload = function()
     {

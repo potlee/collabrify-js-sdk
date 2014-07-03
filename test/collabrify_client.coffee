@@ -32,7 +32,7 @@ describe 'CollabrifyClient', ->
 		@c.on 'ready', ->
 			done()
 		@c.on 'error', (error) ->
-			throw error
+			done(error)
 
 	it 'should broadcast message', (done) ->
 		this.timeout(3000)
@@ -41,16 +41,17 @@ describe 'CollabrifyClient', ->
 			password: 'password'
 			tags: ['node_test_session']
 			startPaused: false
-		.catch alert
+		.catch (error) ->
+			done(error)
 		@c.on 'notifications_start', =>
 			@c.broadcast deep: 'potlee'
 			.catch (e) ->
-				throw e
+				done(e)
 		@c.on 'event', (event) ->
 			event.data().deep.should.equal 'potlee'
 			done()
 		@c.on 'notifications_error', (error) ->
-			throw error
+			done(error)
 
 	it 'should create session', (done) ->
 		@c.createSession
@@ -66,7 +67,7 @@ describe 'CollabrifyClient', ->
 		@c.on 'notifications_start', ->
 			#alert 'start'
 		@c.on 'notifications_error', (error) ->
-			alert 'internet turned off'
+			done(error)
 
 	it 'should create session with basefile and join it', (done) ->
 		@timeout 10000
@@ -89,7 +90,7 @@ describe 'CollabrifyClient', ->
 			#session.baseFile.aa[999].should.equal 'p'
 			done()
 		.catch (e) ->
-			alert e
+			done(e)
 
 	it 'should look for sessions with tags', (done) ->
 		@timeout 4000
@@ -98,7 +99,7 @@ describe 'CollabrifyClient', ->
 			list.should.be.an 'Array'
 			done()
 		.catch (e) ->
-			throw e
+			done(e)
 
 	it 'should leave session', (done) ->
 		@timeout 3000
@@ -113,7 +114,7 @@ describe 'CollabrifyClient', ->
 			String(@c.session).should.equal 'undefined'
 			done()
 		.catch (e) ->
-			alert e
+			done(e)
 
 	it 'should end session', (done) ->
 		@timeout 3000
@@ -128,7 +129,7 @@ describe 'CollabrifyClient', ->
 			String(@c.session).should.equal 'undefined'
 			done()
 		.catch (e) ->
-			alert e
+			done(e)
 
 	it 'should prevent further joins', (done) ->
 		@timeout 5000
@@ -144,14 +145,14 @@ describe 'CollabrifyClient', ->
 		.then ->
 			done()
 		.catch (e) ->
-			alert e
+			done(e)
 
 	it 'should start notifications', (done) ->
 		this.timeout(5000)
 		@c.on 'notifications_start', ->
 			done()
 		@c.on 'notifications_error', (error) ->
-			alert error
+			done(error)
 		@c.createSession
 			name: 'node_test_session' + Math.random().toString()
 			password: 'password' 
