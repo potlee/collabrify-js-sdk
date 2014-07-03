@@ -17,7 +17,8 @@ class CollabrifyClient
 			@eventEmitter.emit 'ready'
 		.catch (e) =>
 			@eventEmitter.emit 'error', e
-			
+		@version = Collabrify.ClientVersion
+		
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo
 			application_id: @application_id
@@ -27,9 +28,6 @@ class CollabrifyClient
 			accessInfo.session_id = @session.session_id || null 
 			accessInfo.participant_id = @session.participant_id && @session.participant_id[0] || null 
 		accessInfo
-
-	version: ->
-		ClientVersion
 		
 	broadcast: (message, event_type) ->
 		new Promise (fulfill, reject) =>

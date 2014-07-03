@@ -10730,7 +10730,7 @@ module.exports.UpdateNotificationIdResponse = builder.build('Response_UpdateNoti
 
 module.exports.Event = builder.build('CollabrifyEvent_PB');
 
-ClientVersion = "3.0.1";
+ClientVersion = "3.01";
 
 module.exports.ClientVersion = ClientVersion;
 
@@ -10874,6 +10874,7 @@ CollabrifyClient = (function() {
         return _this.eventEmitter.emit('error', e);
       };
     })(this));
+    this.version = Collabrify.ClientVersion;
   }
 
   CollabrifyClient.prototype.accessInfo = function() {
@@ -10890,10 +10891,6 @@ CollabrifyClient = (function() {
       accessInfo.participant_id = this.session.participant_id && this.session.participant_id[0] || null;
     }
     return accessInfo;
-  };
-
-  CollabrifyClient.prototype.version = function() {
-    return ClientVersion;
   };
 
   CollabrifyClient.prototype.broadcast = function(message, event_type) {
