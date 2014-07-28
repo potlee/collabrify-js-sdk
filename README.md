@@ -73,11 +73,20 @@ And recieve the data on the other clients
 ```
 Returns a promise that get resolved when a sessions is created on server.
 
-### CollabrifyClient#listSession(Array)
+### CollabrifyClient#listSession(Array, boolean)
 ```javascript
 	client.listSession(['an', 'array', 'of', 'tags']);
 ```
-Returns a promise that get resolved when a list of sessions objects is available.
+Returns a promise that get resolved when a list of session objects is available.
+
+The second (optional, defaults to false) boolean argument determines whether a filter or exact match query is performed (false = filter, true = exact match).
+With filter, a session will be included if their tag list contains all of the tags contained in the array.
+With exact match, a session will be included if and only if their tag list matches the specified tag list.
+
+Example:
+Session 1's tag: ['apple', 'orange', 'banana']
+listSession(['apple']) will include Session 1.
+listSession(['apple'], true) will not include Session 1.
 
 ### Collaborify#joinSession(Object)
 ```javascript
