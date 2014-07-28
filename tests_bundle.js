@@ -10730,7 +10730,7 @@ module.exports.UpdateNotificationIdResponse = builder.build('Response_UpdateNoti
 
 module.exports.Event = builder.build('CollabrifyEvent_PB');
 
-ClientVersion = "3.01";
+ClientVersion = "3.02";
 
 module.exports.ClientVersion = ClientVersion;
 
@@ -11065,7 +11065,10 @@ CollabrifyClient = (function() {
     return this.subscribeToChannel(response[user].notification_id);
   };
 
-  CollabrifyClient.prototype.listSessions = function(tags) {
+  CollabrifyClient.prototype.listSessions = function(tags, exactMatch) {
+    if (exactMatch == null) {
+      exactMatch = false;
+    }
     return new Promise((function(_this) {
       return function(fulfill, reject) {
         return Collabrify.request({
@@ -11073,7 +11076,8 @@ CollabrifyClient = (function() {
           reject: reject,
           body: new Collabrify.ListSessionsRequest({
             access_info: _this.accessInfo(),
-            session_tag: tags
+            session_tag: tags,
+            flag__use_tags_as_filters: !exactMatch
           }),
           ondone: function(buf) {
             var list;
@@ -19381,14 +19385,46 @@ describe('CollabrifyClient', function() {
       return done(e);
     });
   });
-  it('should look for sessions with tags', function(done) {
+  it('should look for sessions with filter tags', function(done) {
+    var nonce;
     this.timeout(4000);
-    return this.c.listSessions(['node_test_session']).then(function(list) {
-      list.should.be.an('Array');
-      return done();
-    })["catch"](function(e) {
-      return done(e);
-    });
+    nonce = Math.random().toString();
+    return this.c.createSession({
+      name: nonce,
+      tags: [nonce, 'filterMatch']
+    }).then((function(_this) {
+      return function(session) {
+        return _this.c.listSessions([nonce]).then(function(list) {
+          list.should.be.an('Array');
+          list.should.not.be.empty;
+          list[0].session_name.should.equal(session.session_name);
+          return done();
+        })["catch"](function(e) {
+          return done(e);
+        });
+      };
+    })(this));
+  });
+  it('should look for session with exact match tags', function(done) {
+    var nonce;
+    this.timeout(4000);
+    nonce = Math.random().toString();
+    console.log(nonce);
+    return this.c.createSession({
+      name: nonce,
+      tags: [nonce, 'exactMatch']
+    }).then((function(_this) {
+      return function(session) {
+        return _this.c.listSessions([nonce], true).then(function(list) {
+          console.log(list);
+          list.should.be.an('Array');
+          list.should.be.empty;
+          return done();
+        })["catch"](function(e) {
+          return done(e);
+        });
+      };
+    })(this));
   });
   it('should leave session', function(done) {
     this.timeout(3000);

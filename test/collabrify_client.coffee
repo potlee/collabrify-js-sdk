@@ -92,15 +92,39 @@ describe 'CollabrifyClient', ->
 		.catch (e) ->
 			done(e)
 
-	it 'should look for sessions with tags', (done) ->
+	it 'should look for sessions with filter tags', (done) ->
 		@timeout 4000
-		@c.listSessions ['node_test_session']
-		.then (list) ->
-			list.should.be.an 'Array'
-			done()
-		.catch (e) ->
-			done(e)
+		nonce = Math.random().toString()
+		@c.createSession
+			name: nonce
+			tags: [nonce, 'filterMatch']
+		.then (session) =>
+			@c.listSessions [nonce]
+			.then (list) =>
+				list.should.be.an 'Array'
+				list.should.not.be.empty
+				list[0].session_name.should.equal session.session_name
+				done()
+			.catch (e) ->
+				done(e)
 
+	it 'should look for session with exact match tags', (done) ->
+		@timeout 4000
+		nonce = Math.random().toString()
+		console.log nonce
+		@c.createSession
+			name: nonce
+			tags: [nonce, 'exactMatch']
+		.then (session) =>
+			@c.listSessions [nonce], true
+			.then (list) =>
+				console.log list
+				list.should.be.an 'Array'
+				list.should.be.empty
+				done()
+			.catch (e) ->
+				done(e)
+				
 	it 'should leave session', (done) ->
 		@timeout 3000
 		@c.createSession

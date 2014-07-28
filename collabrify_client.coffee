@@ -167,7 +167,8 @@ class CollabrifyClient
 		@timeAdjustment = Date.now() - header.timestamp
 		@subscribeToChannel(response[user].notification_id)
 
-	listSessions: (tags) ->
+	listSessions: (tags, exactMatch = false) ->
+		
 		new Promise (fulfill, reject) =>
 			Collabrify.request
 				header: 'LIST_SESSIONS_REQUEST'
@@ -176,6 +177,7 @@ class CollabrifyClient
 				body: new Collabrify.ListSessionsRequest
 					access_info: @accessInfo()
 					session_tag: tags
+					flag__use_tags_as_filters: !exactMatch
 
 				ondone: (buf) =>
 					list = Collabrify.ListSessionsResponse.decodeDelimited(buf)

@@ -10730,7 +10730,7 @@ module.exports.UpdateNotificationIdResponse = builder.build('Response_UpdateNoti
 
 module.exports.Event = builder.build('CollabrifyEvent_PB');
 
-ClientVersion = "3.01";
+ClientVersion = "3.02";
 
 module.exports.ClientVersion = ClientVersion;
 
@@ -11065,7 +11065,10 @@ CollabrifyClient = (function() {
     return this.subscribeToChannel(response[user].notification_id);
   };
 
-  CollabrifyClient.prototype.listSessions = function(tags) {
+  CollabrifyClient.prototype.listSessions = function(tags, exactMatch) {
+    if (exactMatch == null) {
+      exactMatch = false;
+    }
     return new Promise((function(_this) {
       return function(fulfill, reject) {
         return Collabrify.request({
@@ -11073,7 +11076,8 @@ CollabrifyClient = (function() {
           reject: reject,
           body: new Collabrify.ListSessionsRequest({
             access_info: _this.accessInfo(),
-            session_tag: tags
+            session_tag: tags,
+            flag__use_tags_as_filters: !exactMatch
           }),
           ondone: function(buf) {
             var list;

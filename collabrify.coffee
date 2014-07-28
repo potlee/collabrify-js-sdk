@@ -44,7 +44,7 @@ module.exports.GetFromBaseFileResponse = builder.build 'Response_GetFromBaseFile
 module.exports.UpdateNotificationIdRequest = builder.build 'Request_UpdateNotificationID_PB'
 module.exports.UpdateNotificationIdResponse = builder.build 'Response_UpdateNotificationID_PB'
 module.exports.Event = builder.build 'CollabrifyEvent_PB'
-ClientVersion = "3.01"
+ClientVersion = "3.02"
 module.exports.ClientVersion = ClientVersion
 global.host = '166.collabrify-cloud.appspot.com'
 
