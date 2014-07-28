@@ -10874,8 +10874,9 @@ CollabrifyClient = (function() {
         return _this.eventEmitter.emit('error', e);
       };
     })(this));
-    this.version = Collabrify.ClientVersion;
   }
+
+  CollabrifyClient.version = Collabrify.ClientVersion;
 
   CollabrifyClient.prototype.accessInfo = function() {
     var accessInfo;

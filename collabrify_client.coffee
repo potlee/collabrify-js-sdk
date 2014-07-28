@@ -17,7 +17,8 @@ class CollabrifyClient
 			@eventEmitter.emit 'ready'
 		.catch (e) =>
 			@eventEmitter.emit 'error', e
-		@version = Collabrify.ClientVersion
+	
+	@version: Collabrify.ClientVersion
 		
 	accessInfo: ->
 		accessInfo = new Collabrify.AccessInfo

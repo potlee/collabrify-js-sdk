@@ -94,7 +94,7 @@ listSession(['apple'], true) will not include Session 1.
 ```
 Returns a promise that gets resolved when the session is joined.
 
-### CollabrifyClient#broadbast()
+### CollabrifyClient#broadcast()
 ```javascript
 	client.broadcast({any: 'javascript', object: 1});
 ```
@@ -129,6 +129,13 @@ Pauses incoming events.
 	client.resumeEvents();
 ```
 Resumes incoming events.
+
+### CollabrifyClient#version()
+'''javascript
+	console.log CollabrifyClient.version
+'''
+
+Returns the client version
 
 ## Events
 
