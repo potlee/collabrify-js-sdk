@@ -201,17 +201,18 @@ class CollabrifyClient
 				if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
 					addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload)
 					event = addEvent.event
-					
+
 					event.submission_registration_id = addEvent.submission_registration_id
 					unless addEvent.event.author_participant_id == @participant.participant_id
 						addEvent.event.submission_registration_id = -1
 
 					event.author = @session.participant[event.author_participant_id]
-					event.data = -> event.payload.toJSON()
-					event.rawData = -> event.payload.toBuffer()
+					event.raw = event.payload.toBuffer()
+					event.rawData = -> event.raw
+					event.data = -> JSON.parse(ByteBuffer.wrap(event.raw).toUTF8())
 					addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
-
 					@eventEmitter.emitOrdered 'event', event
+					
 
 				if notification.notification_message_type == 2 #Collabrify.NotificationMessageType['ADD_PARTICIPANT_NOTIFICATION']
 					addParticipant = Collabrify.Notification_AddParticipant.decode(notification.payload)

@@ -1,4 +1,4 @@
-(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
 /*!
@@ -17,22 +17,35 @@ exports.INSPECT_MAX_BYTES = 50
 Buffer.poolSize = 8192
 
 /**
- * If `Buffer._useTypedArrays`:
+ * If `TYPED_ARRAY_SUPPORT`:
  *   === true    Use Uint8Array implementation (fastest)
- *   === false   Use Object implementation (compatible down to IE6)
+ *   === false   Use Object implementation (most compatible, even IE6)
+ *
+ * Browsers that support typed arrays are IE 10+, Firefox 4+, Chrome 7+, Safari 5.1+,
+ * Opera 11.6+, iOS 4.2+.
+ *
+ * Note:
+ *
+ * - Implementation must support adding new properties to `Uint8Array` instances.
+ *   Firefox 4-29 lacked support, fixed in Firefox 30+.
+ *   See: https://bugzilla.mozilla.org/show_bug.cgi?id=695438.
+ *
+ *  - Chrome 9-10 is missing the `TypedArray.prototype.subarray` function.
+ *
+ *  - IE10 has a broken `TypedArray.prototype.subarray` function which returns arrays of
+ *    incorrect length in some situations.
+ *
+ * We detect these buggy browsers and set `TYPED_ARRAY_SUPPORT` to `false` so they will
+ * get the Object implementation, which is slower but will work correctly.
  */
-Buffer._useTypedArrays = (function () {
-  // Detect if browser supports Typed Arrays. Supported browsers are IE 10+, Firefox 4+,
-  // Chrome 7+, Safari 5.1+, Opera 11.6+, iOS 4.2+. If the browser does not support adding
-  // properties to `Uint8Array` instances, then that's the same as no `Uint8Array` support
-  // because we need to be able to add all the node Buffer API methods. This is an issue
-  // in Firefox 4-29. Now fixed: https://bugzilla.mozilla.org/show_bug.cgi?id=695438
+var TYPED_ARRAY_SUPPORT = (function () {
   try {
     var buf = new ArrayBuffer(0)
     var arr = new Uint8Array(buf)
     arr.foo = function () { return 42 }
-    return 42 === arr.foo() &&
-        typeof arr.subarray === 'function' // Chrome 9-10 lack `subarray`
+    return 42 === arr.foo() && // typed array instances can be augmented
+        typeof arr.subarray === 'function' && // chrome 9-10 lack `subarray`
+        new Uint8Array(1).subarray(1, 1).byteLength === 0 // ie10 has broken `subarray`
   } catch (e) {
     return false
   }
@@ -56,28 +69,23 @@ function Buffer (subject, encoding, noZero) {
 
   var type = typeof subject
 
-  // Workaround: node's base64 implementation allows for non-padded strings
-  // while base64-js does not.
-  if (encoding === 'base64' && type === 'string') {
-    subject = stringtrim(subject)
-    while (subject.length % 4 !== 0) {
-      subject = subject + '='
-    }
-  }
-
   // Find the length
   var length
   if (type === 'number')
-    length = coerce(subject)
-  else if (type === 'string')
+    length = subject > 0 ? subject >>> 0 : 0
+  else if (type === 'string') {
+    if (encoding === 'base64')
+      subject = base64clean(subject)
     length = Buffer.byteLength(subject, encoding)
-  else if (type === 'object')
-    length = coerce(subject.length) // assume that object is array-like
-  else
+  } else if (type === 'object' && subject !== null) { // assume object is array-like
+    if (subject.type === 'Buffer' && isArray(subject.data))
+      subject = subject.data
+    length = +subject.length > 0 ? Math.floor(+subject.length) : 0
+  } else
     throw new Error('First argument needs to be a number, array or string.')
 
   var buf
-  if (Buffer._useTypedArrays) {
+  if (TYPED_ARRAY_SUPPORT) {
     // Preferred: Return an augmented `Uint8Array` instance for best performance
     buf = Buffer._augment(new Uint8Array(length))
   } else {
@@ -88,7 +96,7 @@ function Buffer (subject, encoding, noZero) {
   }
 
   var i
-  if (Buffer._useTypedArrays && typeof subject.byteLength === 'number') {
+  if (TYPED_ARRAY_SUPPORT && typeof subject.byteLength === 'number') {
     // Speed optimization -- use set if we're copying from a typed array
     buf._set(subject)
   } else if (isArrayish(subject)) {
@@ -102,7 +110,7 @@ function Buffer (subject, encoding, noZero) {
     }
   } else if (type === 'string') {
     buf.write(subject, 0, encoding)
-  } else if (type === 'number' && !Buffer._useTypedArrays && !noZero) {
+  } else if (type === 'number' && !TYPED_ARRAY_SUPPORT && !noZero) {
     for (i = 0; i < length; i++) {
       buf[i] = 0
     }
@@ -134,7 +142,7 @@ Buffer.isEncoding = function (encoding) {
 }
 
 Buffer.isBuffer = function (b) {
-  return !!(b !== null && b !== undefined && b._isBuffer)
+  return !!(b != null && b._isBuffer)
 }
 
 Buffer.byteLength = function (str, encoding) {
@@ -409,7 +417,7 @@ Buffer.prototype.copy = function (target, target_start, start, end) {
 
   var len = end - start
 
-  if (len < 100 || !Buffer._useTypedArrays) {
+  if (len < 100 || !TYPED_ARRAY_SUPPORT) {
     for (var i = 0; i < len; i++) {
       target[i + target_start] = this[i + start]
     }
@@ -481,10 +489,29 @@ function utf16leSlice (buf, start, end) {
 
 Buffer.prototype.slice = function (start, end) {
   var len = this.length
-  start = clamp(start, len, 0)
-  end = clamp(end, len, len)
+  start = ~~start
+  end = end === undefined ? len : ~~end
 
-  if (Buffer._useTypedArrays) {
+  if (start < 0) {
+    start += len;
+    if (start < 0)
+      start = 0
+  } else if (start > len) {
+    start = len
+  }
+
+  if (end < 0) {
+    end += len
+    if (end < 0)
+      end = 0
+  } else if (end > len) {
+    end = len
+  }
+
+  if (end < start)
+    end = start
+
+  if (TYPED_ARRAY_SUPPORT) {
     return Buffer._augment(this.subarray(start, end))
   } else {
     var sliceLen = end - start
@@ -943,7 +970,7 @@ Buffer.prototype.inspect = function () {
  */
 Buffer.prototype.toArrayBuffer = function () {
   if (typeof Uint8Array !== 'undefined') {
-    if (Buffer._useTypedArrays) {
+    if (TYPED_ARRAY_SUPPORT) {
       return (new Buffer(this)).buffer
     } else {
       var buf = new Uint8Array(this.length)
@@ -1019,28 +1046,21 @@ Buffer._augment = function (arr) {
   return arr
 }
 
+var INVALID_BASE64_RE = /[^+\/0-9A-z]/g
+
+function base64clean (str) {
+  // Node strips out invalid characters like \n and \t from the string, base64-js does not
+  str = stringtrim(str).replace(INVALID_BASE64_RE, '')
+  // Node allows for non-padded base64 strings (missing trailing ===), base64-js does not
+  while (str.length % 4 !== 0) {
+    str = str + '='
+  }
+  return str
+}
+
 function stringtrim (str) {
   if (str.trim) return str.trim()
   return str.replace(/^\s+|\s+$/g, '')
-}
-
-// slice(start, end)
-function clamp (index, len, defaultValue) {
-  if (typeof index !== 'number') return defaultValue
-  index = ~~index;  // Coerce to integer.
-  if (index >= len) return len
-  if (index >= 0) return index
-  index += len
-  if (index >= 0) return index
-  return 0
-}
-
-function coerce (length) {
-  // Coerce length to a number (possibly NaN), round up
-  // in case it's fractional (e.g. 123.456) then do a
-  // double negate to coerce a NaN to 0. Easy, right?
-  length = ~~Math.ceil(+length)
-  return length < 0 ? 0 : length
 }
 
 function isArray (subject) {
@@ -1419,10 +1439,8 @@ EventEmitter.prototype.emit = function(type) {
       er = arguments[1];
       if (er instanceof Error) {
         throw er; // Unhandled 'error' event
-      } else {
-        throw TypeError('Uncaught, unspecified "error" event.');
       }
-      return false;
+      throw TypeError('Uncaught, unspecified "error" event.');
     }
   }
 
@@ -1681,8 +1699,15 @@ http.request = function (params, cb) {
     if (!params.host && params.hostname) {
         params.host = params.hostname;
     }
-    
-    if (!params.scheme) params.scheme = window.location.protocol.split(':')[0];
+
+    if (!params.protocol) {
+        if (params.scheme) {
+            params.protocol = params.scheme + ':';
+        } else {
+            params.protocol = window.location.protocol;
+        }
+    }
+
     if (!params.host) {
         params.host = window.location.hostname || window.location.host;
     }
@@ -1692,7 +1717,7 @@ http.request = function (params, cb) {
         }
         params.host = params.host.split(':')[0];
     }
-    if (!params.port) params.port = params.scheme == 'https' ? 443 : 80;
+    if (!params.port) params.port = params.protocol == 'https:' ? 443 : 80;
     
     var req = new Request(new xhrHttp, params);
     if (cb) req.on('response', cb);
@@ -1815,7 +1840,7 @@ var Request = module.exports = function (xhr, params) {
     self.xhr = xhr;
     self.body = [];
     
-    self.uri = (params.scheme || 'http') + '://'
+    self.uri = (params.protocol || 'http:') + '//'
         + params.host
         + (params.port ? ':' + params.port : '')
         + (params.path || '/')
@@ -1828,11 +1853,18 @@ var Request = module.exports = function (xhr, params) {
     try { xhr.withCredentials = params.withCredentials }
     catch (e) {}
     
+    if (params.responseType) try { xhr.responseType = params.responseType }
+    catch (e) {}
+    
     xhr.open(
         params.method || 'GET',
         self.uri,
         true
     );
+
+    xhr.onerror = function(event) {
+        self.emit('error', new Error('Network error'));
+    };
 
     self._headers = {};
     
@@ -1858,6 +1890,10 @@ var Request = module.exports = function (xhr, params) {
     
     res.on('ready', function () {
         self.emit('response', res);
+    });
+
+    res.on('error', function (err) {
+        self.emit('error', err);
     });
     
     xhr.onreadystatechange = function () {
@@ -2204,6 +2240,11 @@ if (typeof Object.create === 'function') {
 }
 
 },{}],11:[function(require,module,exports){
+module.exports = Array.isArray || function (arr) {
+  return Object.prototype.toString.call(arr) == '[object Array]';
+};
+
+},{}],12:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -2430,8 +2471,8 @@ var substr = 'ab'.substr(-1) === 'b'
     }
 ;
 
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12}],12:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13}],13:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -2496,7 +2537,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (global){
 /*! http://mths.be/punycode v1.2.4 by @mathias */
 ;(function(root) {
@@ -3006,8 +3047,8 @@ process.chdir = function (dir) {
 
 }(this));
 
-}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],14:[function(require,module,exports){
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],15:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3093,7 +3134,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3180,16 +3221,16 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":14,"./encode":15}],17:[function(require,module,exports){
+},{"./decode":15,"./encode":16}],18:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":18}],18:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":19}],19:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3281,8 +3322,8 @@ function forEach (xs, f) {
   }
 }
 
-}).call(this,require("LkFnuF"))
-},{"./_stream_readable":20,"./_stream_writable":22,"LkFnuF":12,"core-util-is":23,"inherits":10}],19:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"./_stream_readable":21,"./_stream_writable":23,"_process":13,"core-util-is":24,"inherits":10}],20:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3330,7 +3371,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":21,"core-util-is":23,"inherits":10}],20:[function(require,module,exports){
+},{"./_stream_transform":22,"core-util-is":24,"inherits":10}],21:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3574,7 +3615,7 @@ function howMuchToRead(n, state) {
   if (state.objectMode)
     return n === 0 ? 0 : 1;
 
-  if (isNaN(n) || n === null) {
+  if (n === null || isNaN(n)) {
     // only flow one buffer at a time
     if (state.flowing && state.buffer.length)
       return state.buffer[0].length;
@@ -3609,6 +3650,7 @@ Readable.prototype.read = function(n) {
   var state = this._readableState;
   state.calledRead = true;
   var nOrig = n;
+  var ret;
 
   if (typeof n !== 'number' || n > 0)
     state.emittedReadable = false;
@@ -3627,9 +3669,28 @@ Readable.prototype.read = function(n) {
 
   // if we've ended, and we're now clear, then finish it up.
   if (n === 0 && state.ended) {
+    ret = null;
+
+    // In cases where the decoder did not receive enough data
+    // to produce a full chunk, then immediately received an
+    // EOF, state.buffer will contain [<Buffer >, <Buffer 00 ...>].
+    // howMuchToRead will see this and coerce the amount to
+    // read to zero (because it's looking at the length of the
+    // first <Buffer > in state.buffer), and we'll end up here.
+    //
+    // This can only happen via state.decoder -- no other venue
+    // exists for pushing a zero-length chunk into state.buffer
+    // and triggering this behavior. In this case, we return our
+    // remaining data and end the stream, if appropriate.
+    if (state.length > 0 && state.decoder) {
+      ret = fromList(n, state);
+      state.length -= ret.length;
+    }
+
     if (state.length === 0)
       endReadable(this);
-    return null;
+
+    return ret;
   }
 
   // All the actual chunk generation logic needs to be
@@ -3683,7 +3744,6 @@ Readable.prototype.read = function(n) {
   if (doRead && !state.reading)
     n = howMuchToRead(nOrig, state);
 
-  var ret;
   if (n > 0)
     ret = fromList(n, state);
   else
@@ -3716,8 +3776,7 @@ function chunkInvalid(state, chunk) {
       'string' !== typeof chunk &&
       chunk !== null &&
       chunk !== undefined &&
-      !state.objectMode &&
-      !er) {
+      !state.objectMode) {
     er = new TypeError('Invalid non-string/buffer chunk');
   }
   return er;
@@ -4148,7 +4207,12 @@ Readable.prototype.wrap = function(stream) {
   stream.on('data', function(chunk) {
     if (state.decoder)
       chunk = state.decoder.write(chunk);
-    if (!chunk || !state.objectMode && !chunk.length)
+
+    // don't skip over falsy values in objectMode
+    //if (state.objectMode && util.isNullOrUndefined(chunk))
+    if (state.objectMode && (chunk === null || chunk === undefined))
+      return;
+    else if (!state.objectMode && (!chunk || !chunk.length))
       return;
 
     var ret = self.push(chunk);
@@ -4292,8 +4356,8 @@ function indexOf (xs, x) {
   return -1;
 }
 
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12,"buffer":2,"core-util-is":23,"events":5,"inherits":10,"isarray":24,"stream":30,"string_decoder/":25}],21:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13,"buffer":2,"core-util-is":24,"events":5,"inherits":10,"isarray":11,"stream":30,"string_decoder/":25}],22:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4505,7 +4569,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":18,"core-util-is":23,"inherits":10}],22:[function(require,module,exports){
+},{"./_stream_duplex":19,"core-util-is":24,"inherits":10}],23:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4545,7 +4609,6 @@ Writable.WritableState = WritableState;
 var util = require('core-util-is');
 util.inherits = require('inherits');
 /*</replacement>*/
-
 
 var Stream = require('stream');
 
@@ -4895,8 +4958,8 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-}).call(this,require("LkFnuF"))
-},{"./_stream_duplex":18,"LkFnuF":12,"buffer":2,"core-util-is":23,"inherits":10,"stream":30}],23:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"./_stream_duplex":19,"_process":13,"buffer":2,"core-util-is":24,"inherits":10,"stream":30}],24:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5006,12 +5069,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":2}],24:[function(require,module,exports){
-module.exports = Array.isArray || function (arr) {
-  return Object.prototype.toString.call(arr) == '[object Array]';
-};
-
-},{}],25:[function(require,module,exports){
+},{"buffer":2}],25:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5050,6 +5108,14 @@ function assertEncoding(encoding) {
   }
 }
 
+// StringDecoder provides an interface for efficiently splitting a series of
+// buffers into a series of JS strings without breaking apart multi-byte
+// characters. CESU-8 is handled as part of the UTF-8 encoding.
+//
+// @TODO Handling all encodings inside a single object makes it very difficult
+// to reason about this code, so it should be split up in the future.
+// @TODO There should be a utf8-strict encoding that rejects invalid UTF-8 code
+// points as used by CESU-8.
 var StringDecoder = exports.StringDecoder = function(encoding) {
   this.encoding = (encoding || 'utf8').toLowerCase().replace(/[-_]/, '');
   assertEncoding(encoding);
@@ -5074,37 +5140,50 @@ var StringDecoder = exports.StringDecoder = function(encoding) {
       return;
   }
 
+  // Enough space to store all bytes of a single character. UTF-8 needs 4
+  // bytes, but CESU-8 may require up to 6 (3 bytes per surrogate).
   this.charBuffer = new Buffer(6);
+  // Number of bytes received for the current incomplete multi-byte character.
   this.charReceived = 0;
+  // Number of bytes expected for the current incomplete multi-byte character.
   this.charLength = 0;
 };
 
 
+// write decodes the given buffer and returns it as JS string that is
+// guaranteed to not contain any partial multi-byte characters. Any partial
+// character found at the end of the buffer is buffered up, and will be
+// returned when calling write again with the remaining bytes.
+//
+// Note: Converting a Buffer containing an orphan surrogate to a String
+// currently works, but converting a String to a Buffer (via `new Buffer`, or
+// Buffer#write) will replace incomplete surrogates with the unicode
+// replacement character. See https://codereview.chromium.org/121173009/ .
 StringDecoder.prototype.write = function(buffer) {
   var charStr = '';
-  var offset = 0;
-
   // if our last write ended with an incomplete multibyte character
   while (this.charLength) {
     // determine how many remaining bytes this buffer has to offer for this char
-    var i = (buffer.length >= this.charLength - this.charReceived) ?
-                this.charLength - this.charReceived :
-                buffer.length;
+    var available = (buffer.length >= this.charLength - this.charReceived) ?
+        this.charLength - this.charReceived :
+        buffer.length;
 
     // add the new bytes to the char buffer
-    buffer.copy(this.charBuffer, this.charReceived, offset, i);
-    this.charReceived += (i - offset);
-    offset = i;
+    buffer.copy(this.charBuffer, this.charReceived, 0, available);
+    this.charReceived += available;
 
     if (this.charReceived < this.charLength) {
       // still not enough chars in this buffer? wait for more ...
       return '';
     }
 
+    // remove bytes belonging to the current character from the buffer
+    buffer = buffer.slice(available, buffer.length);
+
     // get the character that was split
     charStr = this.charBuffer.slice(0, this.charLength).toString(this.encoding);
 
-    // lead surrogate (D800-DBFF) is also the incomplete character
+    // CESU-8: lead surrogate (D800-DBFF) is also the incomplete character
     var charCode = charStr.charCodeAt(charStr.length - 1);
     if (charCode >= 0xD800 && charCode <= 0xDBFF) {
       this.charLength += this.surrogateSize;
@@ -5114,34 +5193,33 @@ StringDecoder.prototype.write = function(buffer) {
     this.charReceived = this.charLength = 0;
 
     // if there are no more bytes in this buffer, just emit our char
-    if (i == buffer.length) return charStr;
-
-    // otherwise cut off the characters end from the beginning of this buffer
-    buffer = buffer.slice(i, buffer.length);
+    if (buffer.length === 0) {
+      return charStr;
+    }
     break;
   }
 
-  var lenIncomplete = this.detectIncompleteChar(buffer);
+  // determine and set charLength / charReceived
+  this.detectIncompleteChar(buffer);
 
   var end = buffer.length;
   if (this.charLength) {
     // buffer the incomplete character bytes we got
-    buffer.copy(this.charBuffer, 0, buffer.length - lenIncomplete, end);
-    this.charReceived = lenIncomplete;
-    end -= lenIncomplete;
+    buffer.copy(this.charBuffer, 0, buffer.length - this.charReceived, end);
+    end -= this.charReceived;
   }
 
   charStr += buffer.toString(this.encoding, 0, end);
 
   var end = charStr.length - 1;
   var charCode = charStr.charCodeAt(end);
-  // lead surrogate (D800-DBFF) is also the incomplete character
+  // CESU-8: lead surrogate (D800-DBFF) is also the incomplete character
   if (charCode >= 0xD800 && charCode <= 0xDBFF) {
     var size = this.surrogateSize;
     this.charLength += size;
     this.charReceived += size;
     this.charBuffer.copy(this.charBuffer, size, 0, size);
-    this.charBuffer.write(charStr.charAt(charStr.length - 1), this.encoding);
+    buffer.copy(this.charBuffer, 0, 0, size);
     return charStr.substring(0, end);
   }
 
@@ -5149,6 +5227,10 @@ StringDecoder.prototype.write = function(buffer) {
   return charStr;
 };
 
+// detectIncompleteChar determines if there is an incomplete UTF-8 character at
+// the end of the given buffer. If so, it sets this.charLength to the byte
+// length that character, and sets this.charReceived to the number of bytes
+// that are available for this character.
 StringDecoder.prototype.detectIncompleteChar = function(buffer) {
   // determine how many bytes we have to check at the end of this buffer
   var i = (buffer.length >= 3) ? 3 : buffer.length;
@@ -5178,8 +5260,7 @@ StringDecoder.prototype.detectIncompleteChar = function(buffer) {
       break;
     }
   }
-
-  return i;
+  this.charReceived = i;
 };
 
 StringDecoder.prototype.end = function(buffer) {
@@ -5202,21 +5283,19 @@ function passThroughWrite(buffer) {
 }
 
 function utf16DetectIncompleteChar(buffer) {
-  var incomplete = this.charReceived = buffer.length % 2;
-  this.charLength = incomplete ? 2 : 0;
-  return incomplete;
+  this.charReceived = buffer.length % 2;
+  this.charLength = this.charReceived ? 2 : 0;
 }
 
 function base64DetectIncompleteChar(buffer) {
-  var incomplete = this.charReceived = buffer.length % 3;
-  this.charLength = incomplete ? 3 : 0;
-  return incomplete;
+  this.charReceived = buffer.length % 3;
+  this.charLength = this.charReceived ? 3 : 0;
 }
 
 },{"buffer":2}],26:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":19}],27:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":20}],27:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Readable = exports;
 exports.Writable = require('./lib/_stream_writable.js');
@@ -5224,13 +5303,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":18,"./lib/_stream_passthrough.js":19,"./lib/_stream_readable.js":20,"./lib/_stream_transform.js":21,"./lib/_stream_writable.js":22}],28:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":19,"./lib/_stream_passthrough.js":20,"./lib/_stream_readable.js":21,"./lib/_stream_transform.js":22,"./lib/_stream_writable.js":23}],28:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":21}],29:[function(require,module,exports){
+},{"./lib/_stream_transform.js":22}],29:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":22}],30:[function(require,module,exports){
+},{"./lib/_stream_writable.js":23}],30:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5359,7 +5438,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":5,"inherits":10,"readable-stream/duplex.js":17,"readable-stream/passthrough.js":26,"readable-stream/readable.js":27,"readable-stream/transform.js":28,"readable-stream/writable.js":29}],31:[function(require,module,exports){
+},{"events":5,"inherits":10,"readable-stream/duplex.js":18,"readable-stream/passthrough.js":26,"readable-stream/readable.js":27,"readable-stream/transform.js":28,"readable-stream/writable.js":29}],31:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6068,7 +6147,7 @@ function isNullOrUndefined(arg) {
   return  arg == null;
 }
 
-},{"punycode":13,"querystring":16}],32:[function(require,module,exports){
+},{"punycode":14,"querystring":17}],32:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
@@ -6664,8 +6743,8 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-}).call(this,require("LkFnuF"),typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":32,"LkFnuF":12,"inherits":10}],34:[function(require,module,exports){
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./support/isBuffer":32,"_process":13,"inherits":10}],34:[function(require,module,exports){
 (function (process){
 /*
  Copyright 2013 Daniel Wirtz <dcode@dcode.io>
@@ -10519,8 +10598,8 @@ function hasOwnProperty(obj, prop) {
     }
 
 })(this);
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12,"bytebuffer":38,"fs":1,"path":11}],35:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13,"bytebuffer":38,"fs":1,"path":12}],35:[function(require,module,exports){
 (function() { var h,l=this,m=function(a){return void 0!==a},p=function(a,b,c){a=a.split(".");c=c||l;a[0]in c||!c.execScript||c.execScript("var "+a[0]);for(var d;a.length&&(d=a.shift());)!a.length&&m(b)?c[d]=b:c=c[d]?c[d]:c[d]={}},aa=function(a,b){for(var c=a.split("."),d=b||l,e;e=c.shift();)if(null!=d[e])d=d[e];else return null;return d},ba=function(){},ca=function(a){var b=typeof a;if("object"==b)if(a){if(a instanceof Array)return"array";if(a instanceof Object)return b;var c=Object.prototype.toString.call(a);
 if("[object Window]"==c)return"object";if("[object Array]"==c||"number"==typeof a.length&&"undefined"!=typeof a.splice&&"undefined"!=typeof a.propertyIsEnumerable&&!a.propertyIsEnumerable("splice"))return"array";if("[object Function]"==c||"undefined"!=typeof a.call&&"undefined"!=typeof a.propertyIsEnumerable&&!a.propertyIsEnumerable("call"))return"function"}else return"null";else if("function"==b&&"undefined"==typeof a.call)return"object";return b},q=function(a){return"array"==ca(a)},da=function(a){var b=
 ca(a);return"array"==b||"object"==b&&"number"==typeof a.length},r=function(a){return"string"==typeof a},s=function(a){return"function"==ca(a)},ea=function(a){var b=typeof a;return"object"==b&&null!=a||"function"==b},ia=function(a){return a[ga]||(a[ga]=++ha)},ga="closure_uid_"+(1E9*Math.random()>>>0),ha=0,ja=function(a,b,c){return a.call.apply(a.bind,arguments)},ka=function(a,b,c){if(!a)throw Error();if(2<arguments.length){var d=Array.prototype.slice.call(arguments,2);return function(){var c=Array.prototype.slice.call(arguments);
@@ -10838,7 +10917,7 @@ module.exports.ByteBuffer = ByteBuffer;
 module.exports.requestSynch = requestSynch;
 
 
-}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./ProtoBuf.js":34,"bytebuffer":38,"http":6}],37:[function(require,module,exports){
 var ByteBuffer, Collabrify, CollabrifyClient, EventEmitter, goog,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
@@ -11118,11 +11197,12 @@ CollabrifyClient = (function() {
               addEvent.event.submission_registration_id = -1;
             }
             event.author = _this.session.participant[event.author_participant_id];
-            event.data = function() {
-              return event.payload.toJSON();
-            };
+            event.raw = event.payload.toBuffer();
             event.rawData = function() {
-              return event.payload.toBuffer();
+              return event.raw;
+            };
+            event.data = function() {
+              return JSON.parse(ByteBuffer.wrap(event.raw).toUTF8());
             };
             addEvent.event.elapsed = function() {
               return Date.now() - _this.timeAdjustment - event.timestamp;
@@ -19334,9 +19414,2715 @@ describe('CollabrifyClient', function() {
       return done(error);
     });
   });
-  it('should create session', function(done) {
+  it('should manually fetch large events', function(done) {
+    var data;
+    this.timeout(15000);
+    data = [
+      {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 3,
+            "id": 46,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 4
+            },
+            "parentNode": {
+              "id": 3
+            }
+          }, {
+            "nodeType": 1,
+            "id": 47,
+            "tagName": "BODY",
+            "attributes": {
+              "class": "cart-page-type index-page",
+              "collabrid": "31",
+              "id": "ctl00_bodyTag"
+            },
+            "previousSibling": {
+              "id": 46
+            },
+            "parentNode": {
+              "id": 3
+            }
+          }, {
+            "nodeType": 3,
+            "id": 48,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 47
+            }
+          }, {
+            "nodeType": 1,
+            "id": 49,
+            "tagName": "FORM",
+            "attributes": {
+              "action": "",
+              "collabrid": "32",
+              "id": "aspnetForm",
+              "method": "post",
+              "name": "aspnetForm"
+            },
+            "previousSibling": {
+              "id": 48
+            },
+            "parentNode": {
+              "id": 47
+            }
+          }, {
+            "nodeType": 3,
+            "id": 50,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 49
+            }
+          }, {
+            "nodeType": 1,
+            "id": 51,
+            "tagName": "INPUT",
+            "attributes": {
+              "collabrid": "33",
+              "id": "__VIEWSTATE",
+              "name": "__VIEWSTATE",
+              "type": "hidden",
+              "value": "/wEPDwUKLTMxNjc3NTM3NQ9kFgJmD2QWAgIDDxYCHgVjbGFzcwUZY2FydC1wYWdlLXR5cGUgaW5kZXgtcGFnZRYCAgEPZBYCAgcPZBYCAgMPDxYCHgdWaXNpYmxlaGRkGAEFHl9fQ29udHJvbHNSZXF1aXJlUG9zdEJhY2tLZXlfXxYDBRdjdGwwMCRjdGwwMyRjdGwwMSRpbWJHbwUwY3RsMDAkcGFnZUNvbnRlbnQkY3RsMDAkcHJvZHVjdExpc3QkY3RsMDEkaW1iQWRkBTBjdGwwMCRwYWdlQ29udGVudCRjdGwwMCRwcm9kdWN0TGlzdCRjdGwwMiRpbWJBZGQOjbuf+GMZ/0BrrYF36Jklf6Xqow=="
+            },
+            "previousSibling": {
+              "id": 50
+            },
+            "parentNode": {
+              "id": 49
+            }
+          }, {
+            "nodeType": 3,
+            "id": 52,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 51
+            },
+            "parentNode": {
+              "id": 49
+            }
+          }, {
+            "nodeType": 1,
+            "id": 53,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "34",
+              "id": "wrapper"
+            },
+            "previousSibling": {
+              "id": 52
+            },
+            "parentNode": {
+              "id": 49
+            }
+          }, {
+            "nodeType": 3,
+            "id": 54,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 53
+            }
+          }, {
+            "nodeType": 1,
+            "id": 55,
+            "tagName": "TABLE",
+            "attributes": {
+              "border": "0",
+              "cellpadding": "0",
+              "cellspacing": "0",
+              "class": "page-container",
+              "collabrid": "35",
+              "id": "ctl00_container"
+            },
+            "previousSibling": {
+              "id": 54
+            },
+            "parentNode": {
+              "id": 53
+            }
+          }, {
+            "nodeType": 3,
+            "id": 56,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 55
+            }
+          }, {
+            "nodeType": 1,
+            "id": 57,
+            "tagName": "TBODY",
+            "attributes": {},
+            "previousSibling": {
+              "id": 56
+            },
+            "parentNode": {
+              "id": 55
+            }
+          }, {
+            "nodeType": 1,
+            "id": 58,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "36",
+              "id": "ctl00_header"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 57
+            }
+          }, {
+            "nodeType": 3,
+            "id": 59,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 58
+            }
+          }, {
+            "nodeType": 1,
+            "id": 60,
+            "tagName": "TD",
+            "attributes": {
+              "class": "page-header",
+              "collabrid": "37",
+              "id": "ctl00_headerContent"
+            },
+            "previousSibling": {
+              "id": 59
+            },
+            "parentNode": {
+              "id": 58
+            }
+          }, {
+            "nodeType": 1,
+            "id": 61,
+            "tagName": "LINK",
+            "attributes": {
+              "collabrid": "38",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/29/fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic",
+              "rel": "stylesheet",
+              "type": "text/css"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 62,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 61
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 63,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "39"
+            },
+            "previousSibling": {
+              "id": 62
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 64,
+            "textContent": "\n\nvar fq = location.search.replace(/^.*?\\=/, '');\nif (fq == 1) {\n   document.cookie = \"show_quote_link=yup\";\n}\n\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 63
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 3,
+            "id": 65,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 63
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 66,
+            "tagName": "STYLE",
+            "attributes": {
+              "collabrid": "40"
+            },
+            "previousSibling": {
+              "id": 65
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 67,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 66
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 68,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "41",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/30/www.big-georges.com/preload.js",
+              "type": "text/javascript"
+            },
+            "previousSibling": {
+              "id": 67
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 69,
+            "textContent": "\n&lt;!--\ndiv.breadcrumb { margin: 4px 3px; }\n.category-list tr td { height:80px; vertical-align:middle; }\n--&gt;\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 66
+            }
+          }, {
+            "nodeType": 3,
+            "id": 70,
+            "textContent": "\n        //&lt;![CDATA[\n        \n        //]]&gt;\n        ",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 68
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 3,
+            "id": 71,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 68
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 72,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "42",
+              "type": "text/javascript"
+            },
+            "previousSibling": {
+              "id": 71
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 73,
+            "textContent": "\n\n  var _gaq = _gaq || [];\n  _gaq.push(['_setAccount', 'UA-587067-1']);\n  _gaq.push(['_trackPageview']);\n\n  (function() {\n    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;\n    ga.src = ('https:' == document.location.protocol ? 'https://' : 'http://') + 'stats.g.doubleclick.net/dc.js';\n    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);\n  })();\n\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 72
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 1,
+            "id": 74,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "type": "text/javascript",
+              "async": "",
+              "src": "http://stats.g.doubleclick.net/dc.js"
+            },
+            "previousSibling": {
+              "id": 7
+            },
+            "parentNode": {
+              "id": 4
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 1,
+            "id": 75,
+            "tagName": "TR",
+            "attributes": {
+              "class": "page-body",
+              "collabrid": "71",
+              "id": "ctl00_body"
+            },
+            "previousSibling": {
+              "id": 58
+            },
+            "parentNode": {
+              "id": 57
+            }
+          }, {
+            "nodeType": 3,
+            "id": 76,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 60
+            },
+            "parentNode": {
+              "id": 58
+            }
+          }, {
+            "nodeType": 3,
+            "id": 77,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 72
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 78,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "43",
+              "id": "topbar_jl"
+            },
+            "previousSibling": {
+              "id": 77
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 3,
+            "id": 79,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 78
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 80,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "51",
+              "id": "main_jl"
+            },
+            "previousSibling": {
+              "id": 79
+            },
+            "parentNode": {
+              "id": 60
+            }
+          }, {
+            "nodeType": 1,
+            "id": 81,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "44",
+              "id": "topbar_jl_content"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 78
+            }
+          }, {
+            "nodeType": 3,
+            "id": 82,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 83,
+            "tagName": "A",
+            "attributes": {
+              "class": "reg",
+              "collabrid": "45",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/31/www.big-georges.com/index.asp?PageAction=COMPANY"
+            },
+            "previousSibling": {
+              "id": 82
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 84,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 83
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 85,
+            "tagName": "A",
+            "attributes": {
+              "class": "reg",
+              "collabrid": "46",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/32/www.big-georges.com/index.asp?PageAction=CONTACTUS"
+            },
+            "previousSibling": {
+              "id": 84
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 86,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 85
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 87,
+            "tagName": "A",
+            "attributes": {
+              "class": "reg",
+              "collabrid": "47",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/33/www.big-georges.com/index.asp?PageAction=LOGIN"
+            },
+            "previousSibling": {
+              "id": 86
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 88,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 87
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 89,
+            "tagName": "A",
+            "attributes": {
+              "class": "reg",
+              "collabrid": "48",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/34/www.big-georges.com/testimonials.aspx"
+            },
+            "previousSibling": {
+              "id": 88
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 90,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 89
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 91,
+            "tagName": "A",
+            "attributes": {
+              "class": "reg",
+              "collabrid": "49",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/35/www.big-georges.com/index.asp?PageAction=MYACCOUNT"
+            },
+            "previousSibling": {
+              "id": 90
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 92,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 91
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 1,
+            "id": 93,
+            "tagName": "A",
+            "attributes": {
+              "class": "last",
+              "collabrid": "50",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/36/www.big-georges.com/index.asp?PageAction=CHECKOUT"
+            },
+            "previousSibling": {
+              "id": 92
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 94,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 93
+            },
+            "parentNode": {
+              "id": 81
+            }
+          }, {
+            "nodeType": 3,
+            "id": 95,
+            "textContent": "About Us",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 83
+            }
+          }, {
+            "nodeType": 3,
+            "id": 96,
+            "textContent": "Contact Us",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 85
+            }
+          }, {
+            "nodeType": 3,
+            "id": 97,
+            "textContent": "Login",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 87
+            }
+          }, {
+            "nodeType": 3,
+            "id": 98,
+            "textContent": "Testimonials",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 89
+            }
+          }, {
+            "nodeType": 3,
+            "id": 99,
+            "textContent": "My Account",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 91
+            }
+          }, {
+            "nodeType": 3,
+            "id": 100,
+            "textContent": "Checkout",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 93
+            }
+          }, {
+            "nodeType": 3,
+            "id": 101,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 80
+            }
+          }, {
+            "nodeType": 1,
+            "id": 102,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "52",
+              "id": "header_jl"
+            },
+            "previousSibling": {
+              "id": 101
+            },
+            "parentNode": {
+              "id": 80
+            }
+          }, {
+            "nodeType": 3,
+            "id": 103,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 1,
+            "id": 104,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "53",
+              "id": "header_logo_jl"
+            },
+            "previousSibling": {
+              "id": 103
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 3,
+            "id": 105,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 104
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 1,
+            "id": 106,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "56",
+              "id": "nav_jl"
+            },
+            "previousSibling": {
+              "id": 105
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 3,
+            "id": 107,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 106
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 1,
+            "id": 108,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "70",
+              "style": "clear:both;"
+            },
+            "previousSibling": {
+              "id": 107
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 3,
+            "id": 109,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 108
+            },
+            "parentNode": {
+              "id": 102
+            }
+          }, {
+            "nodeType": 1,
+            "id": 110,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "54",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/37/www.big-georges.com/index.asp"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 104
+            }
+          }, {
+            "nodeType": 1,
+            "id": 111,
+            "tagName": "IMG",
+            "attributes": {
+              "border": "0",
+              "collabrid": "55",
+              "height": "90",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/38/www.big-georges.com/themes/migration-1-1/images/header-new.jpg",
+              "width": "980"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 110
+            }
+          }, {
+            "nodeType": 3,
+            "id": 112,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 106
+            }
+          }, {
+            "nodeType": 1,
+            "id": 113,
+            "tagName": "UL",
+            "attributes": {
+              "collabrid": "57"
+            },
+            "previousSibling": {
+              "id": 112
+            },
+            "parentNode": {
+              "id": 106
+            }
+          }, {
+            "nodeType": 3,
+            "id": 114,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 113
+            },
+            "parentNode": {
+              "id": 106
+            }
+          }, {
+            "nodeType": 3,
+            "id": 115,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 116,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "58"
+            },
+            "previousSibling": {
+              "id": 115
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 117,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 116
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 118,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "60"
+            },
+            "previousSibling": {
+              "id": 117
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 119,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 118
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 120,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "62"
+            },
+            "previousSibling": {
+              "id": 119
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 121,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 120
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 122,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "64"
+            },
+            "previousSibling": {
+              "id": 121
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 123,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 122
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 124,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "66"
+            },
+            "previousSibling": {
+              "id": 123
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 125,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 124
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 126,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "68"
+            },
+            "previousSibling": {
+              "id": 125
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 3,
+            "id": 127,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 126
+            },
+            "parentNode": {
+              "id": 113
+            }
+          }, {
+            "nodeType": 1,
+            "id": 128,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "59",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/39/www.big-georges.com/appliances.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 116
+            }
+          }, {
+            "nodeType": 3,
+            "id": 129,
+            "textContent": "APPLIANCES",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 128
+            }
+          }, {
+            "nodeType": 1,
+            "id": 130,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "61",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/40/www.big-georges.com/tvandvideo.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 118
+            }
+          }, {
+            "nodeType": 3,
+            "id": 131,
+            "textContent": "TV & HOME THEATER",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 130
+            }
+          }, {
+            "nodeType": 1,
+            "id": 132,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "63",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/41/www.big-georges.com/fireplaces.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 120
+            }
+          }, {
+            "nodeType": 3,
+            "id": 133,
+            "textContent": "FIREPLACES",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 132
+            }
+          }, {
+            "nodeType": 1,
+            "id": 134,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "65",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/42/www.big-georges.com/outdoor-grill.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 122
+            }
+          }, {
+            "nodeType": 3,
+            "id": 135,
+            "textContent": "OUTDOOR GRILLS",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 134
+            }
+          }, {
+            "nodeType": 1,
+            "id": 136,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "67",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/43/www.big-georges.com/Mattresses.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 124
+            }
+          }, {
+            "nodeType": 3,
+            "id": 137,
+            "textContent": "MATTRESSES",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 136
+            }
+          }, {
+            "nodeType": 1,
+            "id": 138,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "69",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/44/www.big-georges.com/furniture.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 126
+            }
+          }, {
+            "nodeType": 3,
+            "id": 139,
+            "textContent": "FURNITURE",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 138
+            }
+          }, {
+            "nodeType": 3,
+            "id": 140,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 75
+            }
+          }, {
+            "nodeType": 1,
+            "id": 141,
+            "tagName": "TD",
+            "attributes": {
+              "class": "page-body-content",
+              "collabrid": "72",
+              "id": "ctl00_bodyContent"
+            },
+            "previousSibling": {
+              "id": 140
+            },
+            "parentNode": {
+              "id": 75
+            }
+          }, {
+            "nodeType": 1,
+            "id": 142,
+            "tagName": "TABLE",
+            "attributes": {
+              "border": "0",
+              "cellpadding": "0",
+              "cellspacing": "0",
+              "class": "page-body-columns",
+              "collabrid": "73",
+              "id": "ctl00_columns"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 141
+            }
+          }, {
+            "nodeType": 3,
+            "id": 143,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 142
+            }
+          }, {
+            "nodeType": 1,
+            "id": 144,
+            "tagName": "TBODY",
+            "attributes": {},
+            "previousSibling": {
+              "id": 143
+            },
+            "parentNode": {
+              "id": 142
+            }
+          }, {
+            "nodeType": 1,
+            "id": 145,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "74"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 144
+            }
+          }, {
+            "nodeType": 3,
+            "id": 146,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 145
+            }
+          }, {
+            "nodeType": 1,
+            "id": 147,
+            "tagName": "TD",
+            "attributes": {
+              "class": "page-column-left",
+              "collabrid": "75",
+              "id": "ctl00_leftColumn"
+            },
+            "previousSibling": {
+              "id": 146
+            },
+            "parentNode": {
+              "id": 145
+            }
+          }, {
+            "nodeType": 1,
+            "id": 148,
+            "tagName": "TD",
+            "attributes": {
+              "class": "page-column-center",
+              "collabrid": "133",
+              "id": "ctl00_centerColumn"
+            },
+            "previousSibling": {
+              "id": 147
+            },
+            "parentNode": {
+              "id": 145
+            }
+          }, {
+            "nodeType": 1,
+            "id": 149,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "76",
+              "id": "leftcolumn_wrapper"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 147
+            }
+          }, {
+            "nodeType": 3,
+            "id": 150,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 149
+            },
+            "parentNode": {
+              "id": 147
+            }
+          }, {
+            "nodeType": 3,
+            "id": 151,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 152,
+            "tagName": "H3",
+            "attributes": {
+              "collabrid": "77"
+            },
+            "previousSibling": {
+              "id": 151
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 153,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 152
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 154,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "78",
+              "id": "searchBox",
+              "style": "width:120px!important;"
+            },
+            "previousSibling": {
+              "id": 153
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 155,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 154
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 156,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "99"
+            },
+            "previousSibling": {
+              "id": 155
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 157,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 156
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 158,
+            "tagName": "H3",
+            "attributes": {
+              "collabrid": "100"
+            },
+            "previousSibling": {
+              "id": 157
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 159,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 158
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 160,
+            "tagName": "UL",
+            "attributes": {
+              "class": "module-list cat-nav",
+              "collabrid": "101"
+            },
+            "previousSibling": {
+              "id": 159
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 161,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 160
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 162,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "122"
+            },
+            "previousSibling": {
+              "id": 161
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 163,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "123"
+            },
+            "previousSibling": {
+              "id": 162
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 164,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 163
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 165,
+            "tagName": "H3",
+            "attributes": {
+              "collabrid": "124"
+            },
+            "previousSibling": {
+              "id": 164
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 166,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 165
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 167,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "125",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/56/www.facebook.com/pages/Ann-Arbor-MI/Big-Georges-Home-Appliance-Mart/64363012085",
+              "target": "_blank"
+            },
+            "previousSibling": {
+              "id": 166
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 168,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 167
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 169,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "127",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/58/twitter.com/big_georges",
+              "target": "_blank"
+            },
+            "previousSibling": {
+              "id": 168
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 170,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 169
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 171,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "129"
+            },
+            "previousSibling": {
+              "id": 170
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 172,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "130"
+            },
+            "previousSibling": {
+              "id": 171
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 173,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "131"
+            },
+            "previousSibling": {
+              "id": 172
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 1,
+            "id": 174,
+            "tagName": "BR",
+            "attributes": {
+              "collabrid": "132"
+            },
+            "previousSibling": {
+              "id": 173
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 175,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 174
+            },
+            "parentNode": {
+              "id": 149
+            }
+          }, {
+            "nodeType": 3,
+            "id": 176,
+            "textContent": "SEARCH",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 152
+            }
+          }, {
+            "nodeType": 3,
+            "id": 177,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 154
+            }
+          }, {
+            "nodeType": 1,
+            "id": 178,
+            "tagName": "TABLE",
+            "attributes": {
+              "border": "0",
+              "cellpadding": "0",
+              "cellspacing": "0",
+              "class": "mod-body ",
+              "collabrid": "79",
+              "width": "100%"
+            },
+            "previousSibling": {
+              "id": 177
+            },
+            "parentNode": {
+              "id": 154
+            }
+          }, {
+            "nodeType": 3,
+            "id": 179,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 178
+            },
+            "parentNode": {
+              "id": 154
+            }
+          }, {
+            "nodeType": 3,
+            "id": 180,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 178
+            }
+          }, {
+            "nodeType": 1,
+            "id": 181,
+            "tagName": "TBODY",
+            "attributes": {},
+            "previousSibling": {
+              "id": 180
+            },
+            "parentNode": {
+              "id": 178
+            }
+          }, {
+            "nodeType": 1,
+            "id": 182,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "80"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 181
+            }
+          }, {
+            "nodeType": 1,
+            "id": 183,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "84"
+            },
+            "previousSibling": {
+              "id": 182
+            },
+            "parentNode": {
+              "id": 181
+            }
+          }, {
+            "nodeType": 1,
+            "id": 184,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "95"
+            },
+            "previousSibling": {
+              "id": 183
+            },
+            "parentNode": {
+              "id": 181
+            }
+          }, {
+            "nodeType": 3,
+            "id": 185,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 184
+            },
+            "parentNode": {
+              "id": 181
+            }
+          }, {
+            "nodeType": 3,
+            "id": 186,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 182
+            }
+          }, {
+            "nodeType": 1,
+            "id": 187,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-tl",
+              "collabrid": "81"
+            },
+            "previousSibling": {
+              "id": 186
+            },
+            "parentNode": {
+              "id": 182
+            }
+          }, {
+            "nodeType": 1,
+            "id": 188,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-tp",
+              "collabrid": "82"
+            },
+            "previousSibling": {
+              "id": 187
+            },
+            "parentNode": {
+              "id": 182
+            }
+          }, {
+            "nodeType": 1,
+            "id": 189,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-tr",
+              "collabrid": "83"
+            },
+            "previousSibling": {
+              "id": 188
+            },
+            "parentNode": {
+              "id": 182
+            }
+          }, {
+            "nodeType": 3,
+            "id": 190,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 189
+            },
+            "parentNode": {
+              "id": 182
+            }
+          }, {
+            "nodeType": 3,
+            "id": 191,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 183
+            }
+          }, {
+            "nodeType": 1,
+            "id": 192,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-lt",
+              "collabrid": "85"
+            },
+            "previousSibling": {
+              "id": 191
+            },
+            "parentNode": {
+              "id": 183
+            }
+          }, {
+            "nodeType": 1,
+            "id": 193,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-body",
+              "collabrid": "86"
+            },
+            "previousSibling": {
+              "id": 192
+            },
+            "parentNode": {
+              "id": 183
+            }
+          }, {
+            "nodeType": 1,
+            "id": 194,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-rt",
+              "collabrid": "94"
+            },
+            "previousSibling": {
+              "id": 193
+            },
+            "parentNode": {
+              "id": 183
+            }
+          }, {
+            "nodeType": 3,
+            "id": 195,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 194
+            },
+            "parentNode": {
+              "id": 183
+            }
+          }, {
+            "nodeType": 3,
+            "id": 196,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 193
+            }
+          }, {
+            "nodeType": 1,
+            "id": 197,
+            "tagName": "DIV",
+            "attributes": {
+              "collabrid": "87",
+              "id": "ctl00_ctl03_ctl01_pnlSearch"
+            },
+            "previousSibling": {
+              "id": 196
+            },
+            "parentNode": {
+              "id": 193
+            }
+          }, {
+            "nodeType": 3,
+            "id": 198,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 197
+            },
+            "parentNode": {
+              "id": 193
+            }
+          }, {
+            "nodeType": 3,
+            "id": 199,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 197
+            }
+          }, {
+            "nodeType": 1,
+            "id": 200,
+            "tagName": "TABLE",
+            "attributes": {
+              "cellpadding": "0",
+              "cellspacing": "0",
+              "collabrid": "88",
+              "style": "margin: 0; padding: 0; border: none; border-collapse: collapse;"
+            },
+            "previousSibling": {
+              "id": 199
+            },
+            "parentNode": {
+              "id": 197
+            }
+          }, {
+            "nodeType": 3,
+            "id": 201,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 200
+            },
+            "parentNode": {
+              "id": 197
+            }
+          }, {
+            "nodeType": 3,
+            "id": 202,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 200
+            }
+          }, {
+            "nodeType": 1,
+            "id": 203,
+            "tagName": "TBODY",
+            "attributes": {},
+            "previousSibling": {
+              "id": 202
+            },
+            "parentNode": {
+              "id": 200
+            }
+          }, {
+            "nodeType": 1,
+            "id": 204,
+            "tagName": "TR",
+            "attributes": {
+              "collabrid": "89"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 203
+            }
+          }, {
+            "nodeType": 3,
+            "id": 205,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 204
+            },
+            "parentNode": {
+              "id": 203
+            }
+          }, {
+            "nodeType": 3,
+            "id": 206,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 204
+            }
+          }, {
+            "nodeType": 1,
+            "id": 207,
+            "tagName": "TD",
+            "attributes": {
+              "collabrid": "90",
+              "style": "padding-right: 7px; width: 100%"
+            },
+            "previousSibling": {
+              "id": 206
+            },
+            "parentNode": {
+              "id": 204
+            }
+          }, {
+            "nodeType": 3,
+            "id": 208,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 207
+            },
+            "parentNode": {
+              "id": 204
+            }
+          }, {
+            "nodeType": 1,
+            "id": 209,
+            "tagName": "TD",
+            "attributes": {
+              "collabrid": "92",
+              "style": "text-align: right;"
+            },
+            "previousSibling": {
+              "id": 208
+            },
+            "parentNode": {
+              "id": 204
+            }
+          }, {
+            "nodeType": 3,
+            "id": 210,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 209
+            },
+            "parentNode": {
+              "id": 204
+            }
+          }, {
+            "nodeType": 3,
+            "id": 211,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 207
+            }
+          }, {
+            "nodeType": 1,
+            "id": 212,
+            "tagName": "INPUT",
+            "attributes": {
+              "class": "textbox search-module-text",
+              "collabrid": "91",
+              "id": "ctl00_ctl03_ctl01_txtSearch",
+              "maxlength": "100",
+              "name": "ctl00$ctl03$ctl01$txtSearch",
+              "type": "text"
+            },
+            "previousSibling": {
+              "id": 211
+            },
+            "parentNode": {
+              "id": 207
+            }
+          }, {
+            "nodeType": 3,
+            "id": 213,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 212
+            },
+            "parentNode": {
+              "id": 207
+            }
+          }, {
+            "nodeType": 3,
+            "id": 214,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 209
+            }
+          }, {
+            "nodeType": 1,
+            "id": 215,
+            "tagName": "INPUT",
+            "attributes": {
+              "alt": "Go",
+              "border": "0",
+              "collabrid": "93",
+              "id": "ctl00_ctl03_ctl01_imbGo",
+              "name": "ctl00$ctl03$ctl01$imbGo",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/45/www.big-georges.com/themes/migration-1-1/images/buttons/mod_btn_go.gif",
+              "type": "image"
+            },
+            "previousSibling": {
+              "id": 214
+            },
+            "parentNode": {
+              "id": 209
+            }
+          }, {
+            "nodeType": 3,
+            "id": 216,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 215
+            },
+            "parentNode": {
+              "id": 209
+            }
+          }, {
+            "nodeType": 3,
+            "id": 217,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 184
+            }
+          }, {
+            "nodeType": 1,
+            "id": 218,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-bl",
+              "collabrid": "96"
+            },
+            "previousSibling": {
+              "id": 217
+            },
+            "parentNode": {
+              "id": 184
+            }
+          }, {
+            "nodeType": 1,
+            "id": 219,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-bt",
+              "collabrid": "97"
+            },
+            "previousSibling": {
+              "id": 218
+            },
+            "parentNode": {
+              "id": 184
+            }
+          }, {
+            "nodeType": 1,
+            "id": 220,
+            "tagName": "TD",
+            "attributes": {
+              "class": "mod-body-br",
+              "collabrid": "98"
+            },
+            "previousSibling": {
+              "id": 219
+            },
+            "parentNode": {
+              "id": 184
+            }
+          }, {
+            "nodeType": 3,
+            "id": 221,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 220
+            },
+            "parentNode": {
+              "id": 184
+            }
+          }, {
+            "nodeType": 3,
+            "id": 222,
+            "textContent": "OUR PRODUCTS",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 158
+            }
+          }, {
+            "nodeType": 3,
+            "id": 223,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 224,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "102"
+            },
+            "previousSibling": {
+              "id": 223
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 225,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "104"
+            },
+            "previousSibling": {
+              "id": 224
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 226,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "106"
+            },
+            "previousSibling": {
+              "id": 225
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 227,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "108"
+            },
+            "previousSibling": {
+              "id": 226
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 228,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "110"
+            },
+            "previousSibling": {
+              "id": 227
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 229,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "112"
+            },
+            "previousSibling": {
+              "id": 228
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 230,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "114"
+            },
+            "previousSibling": {
+              "id": 229
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 231,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "116"
+            },
+            "previousSibling": {
+              "id": 230
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 232,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "118"
+            },
+            "previousSibling": {
+              "id": 231
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 233,
+            "tagName": "LI",
+            "attributes": {
+              "collabrid": "120"
+            },
+            "previousSibling": {
+              "id": 232
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 3,
+            "id": 234,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 233
+            },
+            "parentNode": {
+              "id": 160
+            }
+          }, {
+            "nodeType": 1,
+            "id": 235,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "103",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/46/www.big-georges.com/shop-by-brand.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 224
+            }
+          }, {
+            "nodeType": 3,
+            "id": 236,
+            "textContent": "Shop By Brand",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 235
+            }
+          }, {
+            "nodeType": 1,
+            "id": 237,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "105",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/47/www.big-georges.com/appliances.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 225
+            }
+          }, {
+            "nodeType": 3,
+            "id": 238,
+            "textContent": "Appliances",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 237
+            }
+          }, {
+            "nodeType": 1,
+            "id": 239,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "107",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/48/www.big-georges.com/tvandvideo.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 226
+            }
+          }, {
+            "nodeType": 3,
+            "id": 240,
+            "textContent": "TV & Home Theater",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 239
+            }
+          }, {
+            "nodeType": 1,
+            "id": 241,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "109",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/49/www.big-georges.com/fireplaces.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 227
+            }
+          }, {
+            "nodeType": 3,
+            "id": 242,
+            "textContent": "Fireplaces",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 241
+            }
+          }, {
+            "nodeType": 1,
+            "id": 243,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "111",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/50/www.big-georges.com/outdoor-grill.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 228
+            }
+          }, {
+            "nodeType": 3,
+            "id": 244,
+            "textContent": "Outdoor Grills",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 243
+            }
+          }, {
+            "nodeType": 1,
+            "id": 245,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "113",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/51/www.big-georges.com/Mattresses.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 229
+            }
+          }, {
+            "nodeType": 3,
+            "id": 246,
+            "textContent": "Mattresses",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 245
+            }
+          }, {
+            "nodeType": 1,
+            "id": 247,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "115",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/52/www.big-georges.com/furniture.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 230
+            }
+          }, {
+            "nodeType": 3,
+            "id": 248,
+            "textContent": "Furniture",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 247
+            }
+          }, {
+            "nodeType": 1,
+            "id": 249,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "117",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/53/www.big-georges.com/clearancespecials_1.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 231
+            }
+          }, {
+            "nodeType": 3,
+            "id": 250,
+            "textContent": "Clearance Specials",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 249
+            }
+          }, {
+            "nodeType": 1,
+            "id": 251,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "119",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/54/www.big-georges.com/Manufacturer-Rebates.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 232
+            }
+          }, {
+            "nodeType": 3,
+            "id": 252,
+            "textContent": "Rebates",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 251
+            }
+          }, {
+            "nodeType": 1,
+            "id": 253,
+            "tagName": "A",
+            "attributes": {
+              "collabrid": "121",
+              "href": "/40b4bad8cb684f37a2b9e62bb4c495dc/55/www.big-georges.com/appliance-service-installation.aspx"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 233
+            }
+          }, {
+            "nodeType": 3,
+            "id": 254,
+            "textContent": "Service & Installation",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 253
+            }
+          }, {
+            "nodeType": 3,
+            "id": 255,
+            "textContent": "FOLLOW US ON...",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 165
+            }
+          }, {
+            "nodeType": 3,
+            "id": 256,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 167
+            }
+          }, {
+            "nodeType": 1,
+            "id": 257,
+            "tagName": "IMG",
+            "attributes": {
+              "alt": "Facebook",
+              "collabrid": "126",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/57/www.big-georges.com/themes/migration-1-1/images/facebook.png"
+            },
+            "previousSibling": {
+              "id": 256
+            },
+            "parentNode": {
+              "id": 167
+            }
+          }, {
+            "nodeType": 3,
+            "id": 258,
+            "textContent": "\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 169
+            }
+          }, {
+            "nodeType": 1,
+            "id": 259,
+            "tagName": "IMG",
+            "attributes": {
+              "alt": "Twitter",
+              "collabrid": "128",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/59/www.big-georges.com/themes/migration-1-1/images/twitter.png",
+              "style": "margin-left: 10px;"
+            },
+            "previousSibling": {
+              "id": 258
+            },
+            "parentNode": {
+              "id": 169
+            }
+          }, {
+            "nodeType": 1,
+            "id": 260,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "134",
+              "type": "text/javascript"
+            },
+            "previousSibling": null,
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 3,
+            "id": 261,
+            "textContent": "\nsetTimeout(function(){var a=document.createElement(\"script\");\nvar b=document.getElementsByTagName(\"script\")[0];\na.src=document.location.protocol+\"//dnn506yrbagrg.cloudfront.net/pages/scripts/0018/5013.js?\"+Math.floor(new Date().getTime()/3600000);\na.async=true;a.type=\"text/javascript\";b.parentNode.insertBefore(a,b)}, 1);\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 260
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 3,
+            "id": 262,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 260
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 8,
+            "id": 263,
+            "textContent": " OwnerIQ Retargeting tag ",
+            "previousSibling": {
+              "id": 262
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 3,
+            "id": 264,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 263
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 1,
+            "id": 265,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "135",
+              "type": "text/javascript"
+            },
+            "previousSibling": {
+              "id": 264
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 3,
+            "id": 266,
+            "textContent": "\n  var _oiqq = _oiqq || [];\n  _oiqq.push(['oiq_doTag']);\n\n  (function() {\n    var oiq = document.createElement('script'); oiq.type = 'text/javascript'; oiq.async = true;\n    oiq.src = document.location.protocol + '//px.owneriq.net/stas/s/cx9r07.js';\n    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(oiq, s);\n  })();\n",
+            "previousSibling": null,
+            "parentNode": {
+              "id": 265
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 1,
+            "id": 267,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "type": "text/javascript",
+              "async": "",
+              "src": "http://px.owneriq.net/stas/s/cx9r07.js"
+            },
+            "previousSibling": {
+              "id": 7
+            },
+            "parentNode": {
+              "id": 4
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 3,
+            "id": 268,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 265
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 8,
+            "id": 269,
+            "textContent": " End OwnerIQ tag ",
+            "previousSibling": {
+              "id": 268
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 3,
+            "id": 270,
+            "textContent": "\n",
+            "previousSibling": {
+              "id": 269
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }, {
+            "nodeType": 1,
+            "id": 271,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "collabrid": "136",
+              "src": "/40b4bad8cb684f37a2b9e62bb4c495dc/60/www.big-georges.com/themes/migration-1-1/js/jquery-1.7.2.min.js"
+            },
+            "previousSibling": {
+              "id": 270
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 1,
+            "id": 272,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "src": "http://dnn506yrbagrg.cloudfront.net/pages/scripts/0018/5013.js?391719",
+              "async": "",
+              "type": "text/javascript"
+            },
+            "previousSibling": {
+              "id": 7
+            },
+            "parentNode": {
+              "id": 4
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }, {
+        "removed": [],
+        "addedOrMoved": [
+          {
+            "nodeType": 1,
+            "id": 273,
+            "tagName": "SCRIPT",
+            "attributes": {
+              "type": "text/javascript",
+              "async": "",
+              "src": "http://px.owneriq.net/j/?pt=cx9r07&t=f%7C%22Big%2520George's%2520for%2520everything%2520from%2520Electrolux%2520Appliances%2520to%2520Napoleon%2520Fireplaces%22"
+            },
+            "previousSibling": {
+              "id": 270
+            },
+            "parentNode": {
+              "id": 148
+            }
+          }
+        ],
+        "attributes": [],
+        "text": []
+      }
+    ];
+    this.c.createSession({
+      name: 'large_event_test' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: false
+    });
+    this.c.on('notifications_start', (function(_this) {
+      return function() {
+        console.log('broadcasting');
+        return _this.c.broadcast({
+          deep: data
+        })["catch"](function(e) {
+          return done(e);
+        });
+      };
+    })(this));
+    return this.c.on('event', function(event) {
+      event.data().deep.should.equal(data);
+      return done();
+    });
+  });
+  it('should be able to read events multiple times', function(done) {
+    var data;
+    this.timeout(3000);
+    data = {
+      deep: 'potlee'
+    };
     this.c.createSession({
       name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: false
+    })["catch"](function(error) {
+      return done(error);
+    });
+    this.c.on('notifications_start', (function(_this) {
+      return function() {
+        return _this.c.broadcast(data)["catch"](function(e) {
+          return done(e);
+        });
+      };
+    })(this));
+    this.c.on('event', function(event) {
+      var data1, data2;
+      console.log(event.rawData());
+      data1 = event.data();
+      data2 = event.data();
+      data1.deep.should.equal(data.deep);
+      data2.deep.should.equal(data.deep);
+      return done();
+    });
+    return this.c.on('notifications_error', function(error) {
+      return done(error);
+    });
+  });
+  it('should create session', function(done) {
+    this.c.createSession({
+      name: 'create_session_test' + Math.random().toString(),
       password: 'password',
       tags: ['node_test_session'],
       startPaused: false
@@ -19354,13 +22140,11 @@ describe('CollabrifyClient', function() {
     });
   });
   it('should create session with basefile and join it', function(done) {
-    var tag;
     this.timeout(10000);
-    tag = 'node_test_session' + Math.random().toString();
     return this.c.createSession({
-      name: 'node_test_session' + Math.random().toString(),
+      name: 'session_basefile_test' + Math.random().toString(),
       password: 'password',
-      tags: [tag],
+      tags: ['node_test_session'],
       startPaused: false,
       baseFile: {
         aa: Array(20).join('a'),
@@ -19368,21 +22152,17 @@ describe('CollabrifyClient', function() {
         a: 'basefile'
       }
     }).then((function(_this) {
-      return function(session) {
-        return _this.c.listSessions([tag]);
-      };
-    })(this)).then((function(_this) {
-      return function(list) {
+      return function(created_session) {
         return _this.c.joinSession({
-          session: list[0],
+          session: created_session,
           password: 'password'
+        }).then(function(session) {
+          session.baseFile.a.should.equal('basefile');
+          console.log(session.baseFile);
+          return done();
         });
       };
-    })(this)).then(function(session) {
-      session.baseFile.a.should.equal('basefile');
-      console.log(session.baseFile);
-      return done();
-    })["catch"](function(e) {
+    })(this))["catch"](function(e) {
       return done(e);
     });
   });
@@ -19396,9 +22176,13 @@ describe('CollabrifyClient', function() {
     }).then((function(_this) {
       return function(session) {
         return _this.c.listSessions([nonce]).then(function(list) {
+          var match_name;
           list.should.be.an('Array');
           list.should.not.be.empty;
-          list[0].session_name.should.equal(session.session_name);
+          match_name = function(session_el) {
+            return session.session_name === session_el.session_name;
+          };
+          list.some(match_name).should.be["true"];
           return done();
         })["catch"](function(e) {
           return done(e);
@@ -19605,4 +22389,4 @@ describe('CollabrifyClient', function() {
 
 },{"../ProtoBuf.js":34,"../collabrify_client":37,"./chai":74}],76:[function(require,module,exports){
 require('./collabrify_client');
-},{"./collabrify_client":75}]},{},[76])
+},{"./collabrify_client":75}]},{},[76]);
