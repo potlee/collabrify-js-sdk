@@ -30,13 +30,13 @@ class CollabrifyClient
 			accessInfo.participant_id = @session.participant_id && @session.participant_id[0] || null 
 		accessInfo
 		
-	broadcast: (message, event_type) ->
+	broadcast: (event_data, event_type) ->
 		new Promise (fulfill, reject) =>
 			srid = @submission_registration_id++
-			if message.toString() == '[object ArrayBuffer]'
-				buffer = message
+			if event_data.toString() == '[object ArrayBuffer]'
+				buffer = event_data
 			else
-				buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer()
+				buffer = ByteBuffer.wrap(JSON.stringify(event_data)).toBuffer()
 			Collabrify.requestSynch
 				header: 'ADD_EVENT_REQUEST'
 				reject: reject
@@ -50,17 +50,18 @@ class CollabrifyClient
 				message: buffer#messageBuffer
 
 				ondone: (buf) =>
-					event = Collabrify.AddEventResponse.decodeDelimited(buf)
-					event.data = message
-					event.order_id = event.new_event_order_id
-					event.event_type = event_type
-					event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
-					event.author = @participant
-					fulfill(event)
-				event_type: event_type
-				event: message
-				submission_registration_id: srid
-
+					addResponse = Collabrify.AddEventResponse.decodeDelimited(buf)
+					broadcastedEvent = Collabrify.createEvent({
+						order_id: addResponse.new_event_order_id, 
+						raw: buffer, 
+						timestamp: addResponse.timestamp, 
+						srid: addResponse.submission_registration_id, 
+						author: @participant, 
+						type: event_type, 
+						timeAdjustment: @timeAdjustment})
+					fulfill(broadcastedEvent)
+					console.log 'from broadcast'
+					@eventEmitter.emitOrdered 'event', broadcastedEvent
 
 	createSession: (sessionProperties) ->
 		new Promise (fullfill, reject) =>
@@ -147,7 +148,7 @@ class CollabrifyClient
 
 							ondone: (buf) =>
 								response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf)
-								@session.baseFile = buf.toJSON()
+								@session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()))
 								fulfill(@session)
 					else
 						fulfill(@session)
@@ -200,19 +201,43 @@ class CollabrifyClient
 				notification = Collabrify.CollabrifyNotification.decode64(message.data)
 				if notification.notification_message_type == 1 #Collabrify.NotificationMessageType['ADD_EVENT_NOTIFICATION']
 					addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload)
-					event = addEvent.event
+					if addEvent.author_participant_id == @participant.participant_id
+						#event already processed, no need to do anything here
+						return
+					if addEvent.flag__event_included	
+						@eventEmitter.emitOrdered 'event', Collabrify.createEvent({
+							order_id: addEvent.order_id, 
+							raw: addEvent.event.payload.toBuffer(), 
+							timestamp: addEvent.event.timestamp, 
+							srid: -1, 
+							author: @session.participant[addEvent.author_participant_id], 
+							type: addEvent.event.event_type, 
+							timeAdjustment: @timeAdjustment})
+					else
+						#fetch event manually
+						Collabrify.request
+							header: 'GET_EVENT_BATCH_REQUEST'
 
-					event.submission_registration_id = addEvent.submission_registration_id
-					unless addEvent.event.author_participant_id == @participant.participant_id
-						addEvent.event.submission_registration_id = -1
-
-					event.author = @session.participant[event.author_participant_id]
-					event.raw = event.payload.toBuffer()
-					event.rawData = -> event.raw
-					event.data = -> JSON.parse(ByteBuffer.wrap(event.raw).toUTF8())
-					addEvent.event.elapsed = => Date.now() - @timeAdjustment - event.timestamp
-					@eventEmitter.emitOrdered 'event', event
-					
+							body: new Collabrify.GetEventBatchRequest
+								access_info: @accessInfo()
+								starting_order_id: addEvent.order_id
+								ending_order_id: -1 #Get all remaining events
+							
+							ondone: (buf) =>
+								body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
+								if body.number_of_events_to_follow
+									for i in [1..body.number_of_events_to_follow] 
+										eventPB = Collabrify.Event.decodeDelimited(buf)
+										unless eventPB.author_participant_id == @participant.participant_id 
+											event = Collabrify.createEvent({
+												order_id: eventPB.order_id, 
+												raw: eventPB.payload.toBuffer(), 
+												timestamp: eventPB.timestamp,
+												srid: -1, 
+												author: @session.participant[eventPB.author_participant_id], 
+												type: eventPB.event_type, 
+												timeAdjustment: @timeAdjustment})
+											@eventEmitter.emitOrdered 'event', event
 
 				if notification.notification_message_type == 2 #Collabrify.NotificationMessageType['ADD_PARTICIPANT_NOTIFICATION']
 					addParticipant = Collabrify.Notification_AddParticipant.decode(notification.payload)
@@ -265,10 +290,18 @@ class CollabrifyClient
 							body = Collabrify.GetEventBatchResponse.decodeDelimited(buf)
 							if body.number_of_events_to_follow
 								for i in [1..body.number_of_events_to_follow] 
-									event = Collabrify.Event.decodeDelimited(buf)
-									event.data = -> event.payload.toJSON()
-									event.rawData = -> event.payload.toBuffer()
-									@eventEmitter.emitOrdered 'event', event, event.order_id
+									eventPB = Collabrify.Event.decodeDelimited(buf)
+									unless eventPB.author_participant_id == @participant.participant_id 
+										event = Collabrify.createEvent({
+											order_id: eventPB.order_id, 
+											raw: eventPB.payload.toBuffer(), 
+											timestamp: eventPB.timestamp,
+											srid: -1, 
+											author: @session.participant[eventPB.author_participant_id], 
+											type: eventPB.event_type, 
+											timeAdjustment: @timeAdjustment})
+										console.log 'channel connected notfy'
+										@eventEmitter.emitOrdered 'event', event
 			catch e
 				@eventEmitter.emit 'error', e
 				

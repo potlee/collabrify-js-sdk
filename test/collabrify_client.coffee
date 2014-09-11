@@ -1,12 +1,33 @@
 require './chai'
 ProtoBuf = require "../ProtoBuf.js"
 CollabrifyClient = require '../collabrify_client'
+EventEmitter = require('../ordered_event_emitter');
 builder = ProtoBuf.loadProtoFile "../proto/CollabrifyProtocolBuffer.proto"
 CollabrifyNotification = builder.build 'CollabrifyNotification_PB'
 Notification_AddParticipant = builder.build 'Notification_AddParticipant_PB'
 Notification_RemoveParticipant = builder.build 'Notification_RemoveParticipant_PB'
 Participant = builder.build 'Participant_PB'
 
+describe 'OrderedEmitter', ->
+	it 'should only emit ordered event once per order id', (done) ->
+		emitter = new EventEmitter()
+		counts = []
+		emitter.on 'event', (e) ->
+			console.log(e)
+			if counts[e.order_id.low]
+				done(e.order_id.low + 'repeated')
+			counts[e.order_id.low] = true
+			if counts[3]
+				done()
+		emitter.emitOrdered 'event', {order_id: {low: 0}}
+		emitter.emitOrdered 'event', {order_id: {low: 0}}
+		emitter.emitOrdered 'event', {order_id: {low: 0}}
+		emitter.emitOrdered 'event', {order_id: {low: 1}}
+		emitter.emitOrdered 'event', {order_id: {low: 1}}
+		emitter.emitOrdered 'event', {order_id: {low: 3}}
+		emitter.emitOrdered 'event', {order_id: {low: 3}}
+		emitter.emitOrdered 'event', {order_id: {low: 2}}
+		
 describe 'CollabrifyClient', ->
 
 	beforeEach ->
@@ -14,11 +35,13 @@ describe 'CollabrifyClient', ->
 			application_id: '4891981239025664'
 			user_id: 'collabrify.tester@gmail.com'
 
-	afterEach ->
-		if(@c.session)
-			@c.leaveSession()
-		@c = null
-		#setTimeout done, 500
+	afterEach (done) ->
+	  cleanup = =>
+				if(@c.session)
+					@c.leaveSession()
+				@c = null
+				setTimeout done, 500
+			setTimeout cleanup, 500
 		
 	it 'should register and emit events', (done) ->
 		@c.on 'custom_event', -> 
@@ -70,11 +93,11 @@ describe 'CollabrifyClient', ->
 			.catch (e) ->
 				done(e)
 		@c.on 'event', (event) ->
-			event.data().deep.should.equal data
+			event.data().deep.should.deep.equal data
 			done()
 			
 	it 'should be able to read event data multiple times', (done) ->
-		this.timeout(3000)
+		this.timeout(5000)
 		data = {deep: 'potlee'}
 		@c.createSession
 			name: 'node_test_session' + Math.random().toString()
@@ -90,12 +113,42 @@ describe 'CollabrifyClient', ->
 		@c.on 'event', (event) ->
 			data1 = event.data()
 			data2 = event.data()
-			data1.deep.should.equal data.deep
-			data2.deep.should.equal data.deep
+			data1.should.deep.equal data
+			data2.should.deep.equal data
 			done()
 		@c.on 'notifications_error', (error) ->
 			done(error)
 	
+	it 'should have consistent data for broadcasted and received event', (done) ->
+		this.timeout(5000)
+		data = {deep: 'potlee'}
+		broadcasted = undefined
+		@c.on 'error', (err) ->
+			done(err)
+		@c.on 'event', (received) ->
+			console.trace()
+			console.log JSON.stringify(broadcasted)
+			console.log JSON.stringify(received)
+			broadcasted.order_id.should.deep.equal received.order_id
+			broadcasted.data().should.deep.equal received.data()
+			broadcasted.rawData().should.deep.equal received.rawData()
+			broadcasted.author.should.deep.equal received.author
+			broadcasted.event_type.should.equal received.event_type
+			done()
+		@c.on 'notifications_start', =>
+			@c.broadcast data, "type"
+			.then (b_event) ->
+				broadcasted = b_event
+				console.log JSON.stringify(broadcasted)
+				#@c.resumeEvent
+		@c.on 'notifications_error', (error) ->
+			done(error)
+		@c.createSession
+			name: 'node_test_session' + Math.random().toString()
+			password: 'password'
+			tags: ['node_test_session']
+			startPaused: true
+		
 	it 'should create session', (done) ->
 		@c.createSession
 			name: 'create_session_test' + Math.random().toString()
@@ -130,6 +183,7 @@ describe 'CollabrifyClient', ->
 				#session.baseFile.aa[999].should.equal 'p'
 				done()
 		.catch (e) ->
+			console.log(e)
 			done(e)
 
 	it 'should look for sessions with filter tags', (done) ->

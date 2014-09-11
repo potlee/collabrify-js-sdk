@@ -72,6 +72,7 @@ module.exports.request = (options) =>
 							options.ondone(buf, header)
 							return
 						catch e
+							console.log(e)
 							options.reject e
 					else
 						options.reject (new Error(header.exception.exception_type + ': ' + header.exception.message))
@@ -90,9 +91,11 @@ module.exports.request = (options) =>
 		request.write options.body.encodeDelimited().toBuffer()
 		request.write(options.message) if options.message?
 		request.on 'error', (e) ->
+			console.log(e)
 			options.reject e	
 		request.end()
 	catch e
+		console.log(e)
 		options.reject e
 
 requestQueue = []
@@ -116,10 +119,18 @@ requestSynch = (options) ->
 		module.exports.request(options)
 	requestQueue.push options
 
-
-ByteBuffer::toJSON = ->
-	JSON.parse(this.readUTF8StringBytes(this.remaining()))
-
+module.exports.createEvent = (options) ->
+	return {
+		order_id: options.order_id,
+		data: -> JSON.parse(ByteBuffer.wrap(options.raw).toUTF8()),
+		rawData: -> options.raw,
+		timestamp: options.timestamp,
+		elapsed: -> Date.now() - options.timeAdjustment - options.timestamp,
+		submission_registration_id: options.srid,
+		author: options.author,
+		event_type: options.type
+	}
+	
 module.exports.ByteBuffer = ByteBuffer
 
 module.exports.requestSynch = requestSynch

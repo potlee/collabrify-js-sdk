@@ -10843,6 +10843,7 @@ module.exports.request = (function(_this) {
                 options.ondone(buf, header);
               } catch (_error) {
                 e = _error;
+                console.log(e);
                 return options.reject(e);
               }
             } else {
@@ -10866,11 +10867,13 @@ module.exports.request = (function(_this) {
         request.write(options.message);
       }
       request.on('error', function(e) {
+        console.log(e);
         return options.reject(e);
       });
       return request.end();
     } catch (_error) {
       e = _error;
+      console.log(e);
       return options.reject(e);
     }
   };
@@ -10908,8 +10911,23 @@ requestSynch = function(options) {
   return requestQueue.push(options);
 };
 
-ByteBuffer.prototype.toJSON = function() {
-  return JSON.parse(this.readUTF8StringBytes(this.remaining()));
+module.exports.createEvent = function(options) {
+  return {
+    order_id: options.order_id,
+    data: function() {
+      return JSON.parse(ByteBuffer.wrap(options.raw).toUTF8());
+    },
+    rawData: function() {
+      return options.raw;
+    },
+    timestamp: options.timestamp,
+    elapsed: function() {
+      return Date.now() - options.timeAdjustment - options.timestamp;
+    },
+    submission_registration_id: options.srid,
+    author: options.author,
+    event_type: options.type
+  };
 };
 
 module.exports.ByteBuffer = ByteBuffer;
@@ -10973,15 +10991,15 @@ CollabrifyClient = (function() {
     return accessInfo;
   };
 
-  CollabrifyClient.prototype.broadcast = function(message, event_type) {
+  CollabrifyClient.prototype.broadcast = function(event_data, event_type) {
     return new Promise((function(_this) {
       return function(fulfill, reject) {
         var buffer, srid;
         srid = _this.submission_registration_id++;
-        if (message.toString() === '[object ArrayBuffer]') {
-          buffer = message;
+        if (event_data.toString() === '[object ArrayBuffer]') {
+          buffer = event_data;
         } else {
-          buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer();
+          buffer = ByteBuffer.wrap(JSON.stringify(event_data)).toBuffer();
         }
         return Collabrify.requestSynch({
           header: 'ADD_EVENT_REQUEST',
@@ -10994,20 +11012,21 @@ CollabrifyClient = (function() {
           }),
           message: buffer,
           ondone: function(buf) {
-            var event;
-            event = Collabrify.AddEventResponse.decodeDelimited(buf);
-            event.data = message;
-            event.order_id = event.new_event_order_id;
-            event.event_type = event_type;
-            event.elapsed = function() {
-              return Date.now() - _this.timeAdjustment - event.timestamp;
-            };
-            event.author = _this.participant;
-            return fulfill(event);
-          },
-          event_type: event_type,
-          event: message,
-          submission_registration_id: srid
+            var addResponse, broadcastedEvent;
+            addResponse = Collabrify.AddEventResponse.decodeDelimited(buf);
+            broadcastedEvent = Collabrify.createEvent({
+              order_id: addResponse.new_event_order_id,
+              raw: buffer,
+              timestamp: addResponse.timestamp,
+              srid: addResponse.submission_registration_id,
+              author: _this.participant,
+              type: event_type,
+              timeAdjustment: _this.timeAdjustment
+            });
+            fulfill(broadcastedEvent);
+            console.log('from broadcast');
+            return _this.eventEmitter.emitOrdered('event', broadcastedEvent);
+          }
         });
       };
     })(this));
@@ -11111,7 +11130,7 @@ CollabrifyClient = (function() {
                 ondone: function(buf) {
                   var response;
                   response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
-                  _this.session.baseFile = buf.toJSON();
+                  _this.session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()));
                   return fulfill(_this.session);
                 }
               });
@@ -11183,7 +11202,7 @@ CollabrifyClient = (function() {
     })(this);
     this.session.socket.onmessage = (function(_this) {
       return function(message) {
-        var addEvent, addParticipant, e, event, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
+        var addEvent, addParticipant, e, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
         try {
           if (!_this.session) {
             return;
@@ -11191,23 +11210,54 @@ CollabrifyClient = (function() {
           notification = Collabrify.CollabrifyNotification.decode64(message.data);
           if (notification.notification_message_type === 1) {
             addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload);
-            event = addEvent.event;
-            event.submission_registration_id = addEvent.submission_registration_id;
-            if (addEvent.event.author_participant_id !== _this.participant.participant_id) {
-              addEvent.event.submission_registration_id = -1;
+            if (addEvent.author_participant_id === _this.participant.participant_id) {
+              return;
             }
-            event.author = _this.session.participant[event.author_participant_id];
-            event.raw = event.payload.toBuffer();
-            event.rawData = function() {
-              return event.raw;
-            };
-            event.data = function() {
-              return JSON.parse(ByteBuffer.wrap(event.raw).toUTF8());
-            };
-            addEvent.event.elapsed = function() {
-              return Date.now() - _this.timeAdjustment - event.timestamp;
-            };
-            _this.eventEmitter.emitOrdered('event', event);
+            if (addEvent.flag__event_included) {
+              _this.eventEmitter.emitOrdered('event', Collabrify.createEvent({
+                order_id: addEvent.order_id,
+                raw: addEvent.event.payload.toBuffer(),
+                timestamp: addEvent.event.timestamp,
+                srid: -1,
+                author: _this.session.participant[addEvent.author_participant_id],
+                type: addEvent.event.event_type,
+                timeAdjustment: _this.timeAdjustment
+              }));
+            } else {
+              Collabrify.request({
+                header: 'GET_EVENT_BATCH_REQUEST',
+                body: new Collabrify.GetEventBatchRequest({
+                  access_info: _this.accessInfo(),
+                  starting_order_id: addEvent.order_id,
+                  ending_order_id: -1
+                }),
+                ondone: function(buf) {
+                  var body, event, eventPB, i, _i, _ref, _results;
+                  body = Collabrify.GetEventBatchResponse.decodeDelimited(buf);
+                  if (body.number_of_events_to_follow) {
+                    _results = [];
+                    for (i = _i = 1, _ref = body.number_of_events_to_follow; 1 <= _ref ? _i <= _ref : _i >= _ref; i = 1 <= _ref ? ++_i : --_i) {
+                      eventPB = Collabrify.Event.decodeDelimited(buf);
+                      if (eventPB.author_participant_id !== _this.participant.participant_id) {
+                        event = Collabrify.createEvent({
+                          order_id: eventPB.order_id,
+                          raw: eventPB.payload.toBuffer(),
+                          timestamp: eventPB.timestamp,
+                          srid: -1,
+                          author: _this.session.participant[eventPB.author_participant_id],
+                          type: eventPB.event_type,
+                          timeAdjustment: _this.timeAdjustment
+                        });
+                        _results.push(_this.eventEmitter.emitOrdered('event', event));
+                      } else {
+                        _results.push(void 0);
+                      }
+                    }
+                    return _results;
+                  }
+                }
+              });
+            }
           }
           if (notification.notification_message_type === 2) {
             addParticipant = Collabrify.Notification_AddParticipant.decode(notification.payload);
@@ -11261,19 +11311,27 @@ CollabrifyClient = (function() {
                 ending_order_id: -1
               }),
               ondone: function(buf) {
-                var body, i, _j, _ref1, _results;
+                var body, event, eventPB, i, _j, _ref1, _results;
                 body = Collabrify.GetEventBatchResponse.decodeDelimited(buf);
                 if (body.number_of_events_to_follow) {
                   _results = [];
                   for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
-                    event = Collabrify.Event.decodeDelimited(buf);
-                    event.data = function() {
-                      return event.payload.toJSON();
-                    };
-                    event.rawData = function() {
-                      return event.payload.toBuffer();
-                    };
-                    _results.push(_this.eventEmitter.emitOrdered('event', event, event.order_id));
+                    eventPB = Collabrify.Event.decodeDelimited(buf);
+                    if (eventPB.author_participant_id !== _this.participant.participant_id) {
+                      event = Collabrify.createEvent({
+                        order_id: eventPB.order_id,
+                        raw: eventPB.payload.toBuffer(),
+                        timestamp: eventPB.timestamp,
+                        srid: -1,
+                        author: _this.session.participant[eventPB.author_participant_id],
+                        type: eventPB.event_type,
+                        timeAdjustment: _this.timeAdjustment
+                      });
+                      console.log('channel connected notfy');
+                      _results.push(_this.eventEmitter.emitOrdered('event', event));
+                    } else {
+                      _results.push(void 0);
+                    }
                   }
                   return _results;
                 }
@@ -19339,13 +19397,15 @@ chai.should();
 
 
 },{"chai":39}],75:[function(require,module,exports){
-var CollabrifyClient, CollabrifyNotification, Notification_AddParticipant, Notification_RemoveParticipant, Participant, ProtoBuf, builder;
+var CollabrifyClient, CollabrifyNotification, EventEmitter, Notification_AddParticipant, Notification_RemoveParticipant, Participant, ProtoBuf, builder;
 
 require('./chai');
 
 ProtoBuf = require("../ProtoBuf.js");
 
 CollabrifyClient = require('../collabrify_client');
+
+EventEmitter = require('../ordered_event_emitter');
 
 builder = ProtoBuf.loadProtoFile("../proto/CollabrifyProtocolBuffer.proto");
 
@@ -19357,6 +19417,64 @@ Notification_RemoveParticipant = builder.build('Notification_RemoveParticipant_P
 
 Participant = builder.build('Participant_PB');
 
+describe('OrderedEmitter', function() {
+  return it('should only emit ordered event once per order id', function(done) {
+    var counts, emitter;
+    emitter = new EventEmitter();
+    counts = [];
+    emitter.on('event', function(e) {
+      console.log(e);
+      if (counts[e.order_id.low]) {
+        done(e.order_id.low + 'repeated');
+      }
+      counts[e.order_id.low] = true;
+      if (counts[3]) {
+        return done();
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 0
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 0
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 0
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 1
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 1
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 3
+      }
+    });
+    emitter.emitOrdered('event', {
+      order_id: {
+        low: 3
+      }
+    });
+    return emitter.emitOrdered('event', {
+      order_id: {
+        low: 2
+      }
+    });
+  });
+});
+
 describe('CollabrifyClient', function() {
   beforeEach(function() {
     return this.c = new CollabrifyClient({
@@ -19364,11 +19482,18 @@ describe('CollabrifyClient', function() {
       user_id: 'collabrify.tester@gmail.com'
     });
   });
-  afterEach(function() {
-    if (this.c.session) {
-      this.c.leaveSession();
-    }
-    return this.c = null;
+  afterEach(function(done) {
+    var cleanup;
+    cleanup = (function(_this) {
+      return function() {
+        if (_this.c.session) {
+          _this.c.leaveSession();
+        }
+        _this.c = null;
+        return setTimeout(done, 500);
+      };
+    })(this);
+    return setTimeout(cleanup, 500);
   });
   it('should register and emit events', function(done) {
     this.c.on('custom_event', function() {
@@ -22082,13 +22207,13 @@ describe('CollabrifyClient', function() {
       };
     })(this));
     return this.c.on('event', function(event) {
-      event.data().deep.should.equal(data);
+      event.data().deep.should.deep.equal(data);
       return done();
     });
   });
-  it('should be able to read events multiple times', function(done) {
+  it('should be able to read event data multiple times', function(done) {
     var data;
-    this.timeout(3000);
+    this.timeout(5000);
     data = {
       deep: 'potlee'
     };
@@ -22109,15 +22234,53 @@ describe('CollabrifyClient', function() {
     })(this));
     this.c.on('event', function(event) {
       var data1, data2;
-      console.log(event.rawData());
       data1 = event.data();
       data2 = event.data();
-      data1.deep.should.equal(data.deep);
-      data2.deep.should.equal(data.deep);
+      data1.should.deep.equal(data);
+      data2.should.deep.equal(data);
       return done();
     });
     return this.c.on('notifications_error', function(error) {
       return done(error);
+    });
+  });
+  it('should have consistent data for broadcasted and received event', function(done) {
+    var broadcasted, data;
+    this.timeout(5000);
+    data = {
+      deep: 'potlee'
+    };
+    broadcasted = void 0;
+    this.c.on('error', function(err) {
+      return done(err);
+    });
+    this.c.on('event', function(received) {
+      console.trace();
+      console.log(JSON.stringify(broadcasted));
+      console.log(JSON.stringify(received));
+      broadcasted.order_id.should.deep.equal(received.order_id);
+      broadcasted.data().should.deep.equal(received.data());
+      broadcasted.rawData().should.deep.equal(received.rawData());
+      broadcasted.author.should.deep.equal(received.author);
+      broadcasted.event_type.should.equal(received.event_type);
+      return done();
+    });
+    this.c.on('notifications_start', (function(_this) {
+      return function() {
+        return _this.c.broadcast(data, "type").then(function(b_event) {
+          broadcasted = b_event;
+          return console.log(JSON.stringify(broadcasted));
+        });
+      };
+    })(this));
+    this.c.on('notifications_error', function(error) {
+      return done(error);
+    });
+    return this.c.createSession({
+      name: 'node_test_session' + Math.random().toString(),
+      password: 'password',
+      tags: ['node_test_session'],
+      startPaused: true
     });
   });
   it('should create session', function(done) {
@@ -22163,6 +22326,7 @@ describe('CollabrifyClient', function() {
         });
       };
     })(this))["catch"](function(e) {
+      console.log(e);
       return done(e);
     });
   });
@@ -22387,6 +22551,6 @@ describe('CollabrifyClient', function() {
 });
 
 
-},{"../ProtoBuf.js":34,"../collabrify_client":37,"./chai":74}],76:[function(require,module,exports){
+},{"../ProtoBuf.js":34,"../collabrify_client":37,"../ordered_event_emitter":73,"./chai":74}],76:[function(require,module,exports){
 require('./collabrify_client');
 },{"./collabrify_client":75}]},{},[76]);
