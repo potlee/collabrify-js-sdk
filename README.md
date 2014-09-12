@@ -34,10 +34,10 @@ On another webpage, lets search for the session and join in:
 		application_id: Long.fromString('1234567890'),
 		user_id: 'example@gmail.com'
 	});
-	client.listSessions(['you_sesson_tags']);
+	client.listSessions(['you_sesson_tags'])
 	.then(function (sessions) {
 		client.joinSession({session: sessions[0], password: 'password'});
-	});
+	})
 	.then(function (session) {});
 	.catch(function (e) {"catch any errors here"})
 ```
