@@ -1,4 +1,4 @@
-(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
 /*!
@@ -17,22 +17,35 @@ exports.INSPECT_MAX_BYTES = 50
 Buffer.poolSize = 8192
 
 /**
- * If `Buffer._useTypedArrays`:
+ * If `TYPED_ARRAY_SUPPORT`:
  *   === true    Use Uint8Array implementation (fastest)
- *   === false   Use Object implementation (compatible down to IE6)
+ *   === false   Use Object implementation (most compatible, even IE6)
+ *
+ * Browsers that support typed arrays are IE 10+, Firefox 4+, Chrome 7+, Safari 5.1+,
+ * Opera 11.6+, iOS 4.2+.
+ *
+ * Note:
+ *
+ * - Implementation must support adding new properties to `Uint8Array` instances.
+ *   Firefox 4-29 lacked support, fixed in Firefox 30+.
+ *   See: https://bugzilla.mozilla.org/show_bug.cgi?id=695438.
+ *
+ *  - Chrome 9-10 is missing the `TypedArray.prototype.subarray` function.
+ *
+ *  - IE10 has a broken `TypedArray.prototype.subarray` function which returns arrays of
+ *    incorrect length in some situations.
+ *
+ * We detect these buggy browsers and set `TYPED_ARRAY_SUPPORT` to `false` so they will
+ * get the Object implementation, which is slower but will work correctly.
  */
-Buffer._useTypedArrays = (function () {
-  // Detect if browser supports Typed Arrays. Supported browsers are IE 10+, Firefox 4+,
-  // Chrome 7+, Safari 5.1+, Opera 11.6+, iOS 4.2+. If the browser does not support adding
-  // properties to `Uint8Array` instances, then that's the same as no `Uint8Array` support
-  // because we need to be able to add all the node Buffer API methods. This is an issue
-  // in Firefox 4-29. Now fixed: https://bugzilla.mozilla.org/show_bug.cgi?id=695438
+var TYPED_ARRAY_SUPPORT = (function () {
   try {
     var buf = new ArrayBuffer(0)
     var arr = new Uint8Array(buf)
     arr.foo = function () { return 42 }
-    return 42 === arr.foo() &&
-        typeof arr.subarray === 'function' // Chrome 9-10 lack `subarray`
+    return 42 === arr.foo() && // typed array instances can be augmented
+        typeof arr.subarray === 'function' && // chrome 9-10 lack `subarray`
+        new Uint8Array(1).subarray(1, 1).byteLength === 0 // ie10 has broken `subarray`
   } catch (e) {
     return false
   }
@@ -56,28 +69,23 @@ function Buffer (subject, encoding, noZero) {
 
   var type = typeof subject
 
-  // Workaround: node's base64 implementation allows for non-padded strings
-  // while base64-js does not.
-  if (encoding === 'base64' && type === 'string') {
-    subject = stringtrim(subject)
-    while (subject.length % 4 !== 0) {
-      subject = subject + '='
-    }
-  }
-
   // Find the length
   var length
   if (type === 'number')
-    length = coerce(subject)
-  else if (type === 'string')
+    length = subject > 0 ? subject >>> 0 : 0
+  else if (type === 'string') {
+    if (encoding === 'base64')
+      subject = base64clean(subject)
     length = Buffer.byteLength(subject, encoding)
-  else if (type === 'object')
-    length = coerce(subject.length) // assume that object is array-like
-  else
+  } else if (type === 'object' && subject !== null) { // assume object is array-like
+    if (subject.type === 'Buffer' && isArray(subject.data))
+      subject = subject.data
+    length = +subject.length > 0 ? Math.floor(+subject.length) : 0
+  } else
     throw new Error('First argument needs to be a number, array or string.')
 
   var buf
-  if (Buffer._useTypedArrays) {
+  if (TYPED_ARRAY_SUPPORT) {
     // Preferred: Return an augmented `Uint8Array` instance for best performance
     buf = Buffer._augment(new Uint8Array(length))
   } else {
@@ -88,7 +96,7 @@ function Buffer (subject, encoding, noZero) {
   }
 
   var i
-  if (Buffer._useTypedArrays && typeof subject.byteLength === 'number') {
+  if (TYPED_ARRAY_SUPPORT && typeof subject.byteLength === 'number') {
     // Speed optimization -- use set if we're copying from a typed array
     buf._set(subject)
   } else if (isArrayish(subject)) {
@@ -102,7 +110,7 @@ function Buffer (subject, encoding, noZero) {
     }
   } else if (type === 'string') {
     buf.write(subject, 0, encoding)
-  } else if (type === 'number' && !Buffer._useTypedArrays && !noZero) {
+  } else if (type === 'number' && !TYPED_ARRAY_SUPPORT && !noZero) {
     for (i = 0; i < length; i++) {
       buf[i] = 0
     }
@@ -134,7 +142,7 @@ Buffer.isEncoding = function (encoding) {
 }
 
 Buffer.isBuffer = function (b) {
-  return !!(b !== null && b !== undefined && b._isBuffer)
+  return !!(b != null && b._isBuffer)
 }
 
 Buffer.byteLength = function (str, encoding) {
@@ -409,7 +417,7 @@ Buffer.prototype.copy = function (target, target_start, start, end) {
 
   var len = end - start
 
-  if (len < 100 || !Buffer._useTypedArrays) {
+  if (len < 100 || !TYPED_ARRAY_SUPPORT) {
     for (var i = 0; i < len; i++) {
       target[i + target_start] = this[i + start]
     }
@@ -481,10 +489,29 @@ function utf16leSlice (buf, start, end) {
 
 Buffer.prototype.slice = function (start, end) {
   var len = this.length
-  start = clamp(start, len, 0)
-  end = clamp(end, len, len)
+  start = ~~start
+  end = end === undefined ? len : ~~end
 
-  if (Buffer._useTypedArrays) {
+  if (start < 0) {
+    start += len;
+    if (start < 0)
+      start = 0
+  } else if (start > len) {
+    start = len
+  }
+
+  if (end < 0) {
+    end += len
+    if (end < 0)
+      end = 0
+  } else if (end > len) {
+    end = len
+  }
+
+  if (end < start)
+    end = start
+
+  if (TYPED_ARRAY_SUPPORT) {
     return Buffer._augment(this.subarray(start, end))
   } else {
     var sliceLen = end - start
@@ -943,7 +970,7 @@ Buffer.prototype.inspect = function () {
  */
 Buffer.prototype.toArrayBuffer = function () {
   if (typeof Uint8Array !== 'undefined') {
-    if (Buffer._useTypedArrays) {
+    if (TYPED_ARRAY_SUPPORT) {
       return (new Buffer(this)).buffer
     } else {
       var buf = new Uint8Array(this.length)
@@ -1019,28 +1046,21 @@ Buffer._augment = function (arr) {
   return arr
 }
 
+var INVALID_BASE64_RE = /[^+\/0-9A-z]/g
+
+function base64clean (str) {
+  // Node strips out invalid characters like \n and \t from the string, base64-js does not
+  str = stringtrim(str).replace(INVALID_BASE64_RE, '')
+  // Node allows for non-padded base64 strings (missing trailing ===), base64-js does not
+  while (str.length % 4 !== 0) {
+    str = str + '='
+  }
+  return str
+}
+
 function stringtrim (str) {
   if (str.trim) return str.trim()
   return str.replace(/^\s+|\s+$/g, '')
-}
-
-// slice(start, end)
-function clamp (index, len, defaultValue) {
-  if (typeof index !== 'number') return defaultValue
-  index = ~~index;  // Coerce to integer.
-  if (index >= len) return len
-  if (index >= 0) return index
-  index += len
-  if (index >= 0) return index
-  return 0
-}
-
-function coerce (length) {
-  // Coerce length to a number (possibly NaN), round up
-  // in case it's fractional (e.g. 123.456) then do a
-  // double negate to coerce a NaN to 0. Easy, right?
-  length = ~~Math.ceil(+length)
-  return length < 0 ? 0 : length
 }
 
 function isArray (subject) {
@@ -1419,10 +1439,8 @@ EventEmitter.prototype.emit = function(type) {
       er = arguments[1];
       if (er instanceof Error) {
         throw er; // Unhandled 'error' event
-      } else {
-        throw TypeError('Uncaught, unspecified "error" event.');
       }
-      return false;
+      throw TypeError('Uncaught, unspecified "error" event.');
     }
   }
 
@@ -1681,8 +1699,15 @@ http.request = function (params, cb) {
     if (!params.host && params.hostname) {
         params.host = params.hostname;
     }
-    
-    if (!params.scheme) params.scheme = window.location.protocol.split(':')[0];
+
+    if (!params.protocol) {
+        if (params.scheme) {
+            params.protocol = params.scheme + ':';
+        } else {
+            params.protocol = window.location.protocol;
+        }
+    }
+
     if (!params.host) {
         params.host = window.location.hostname || window.location.host;
     }
@@ -1692,7 +1717,7 @@ http.request = function (params, cb) {
         }
         params.host = params.host.split(':')[0];
     }
-    if (!params.port) params.port = params.scheme == 'https' ? 443 : 80;
+    if (!params.port) params.port = params.protocol == 'https:' ? 443 : 80;
     
     var req = new Request(new xhrHttp, params);
     if (cb) req.on('response', cb);
@@ -1815,7 +1840,7 @@ var Request = module.exports = function (xhr, params) {
     self.xhr = xhr;
     self.body = [];
     
-    self.uri = (params.scheme || 'http') + '://'
+    self.uri = (params.protocol || 'http:') + '//'
         + params.host
         + (params.port ? ':' + params.port : '')
         + (params.path || '/')
@@ -1828,11 +1853,18 @@ var Request = module.exports = function (xhr, params) {
     try { xhr.withCredentials = params.withCredentials }
     catch (e) {}
     
+    if (params.responseType) try { xhr.responseType = params.responseType }
+    catch (e) {}
+    
     xhr.open(
         params.method || 'GET',
         self.uri,
         true
     );
+
+    xhr.onerror = function(event) {
+        self.emit('error', new Error('Network error'));
+    };
 
     self._headers = {};
     
@@ -1858,6 +1890,10 @@ var Request = module.exports = function (xhr, params) {
     
     res.on('ready', function () {
         self.emit('response', res);
+    });
+
+    res.on('error', function (err) {
+        self.emit('error', err);
     });
     
     xhr.onreadystatechange = function () {
@@ -2204,6 +2240,11 @@ if (typeof Object.create === 'function') {
 }
 
 },{}],11:[function(require,module,exports){
+module.exports = Array.isArray || function (arr) {
+  return Object.prototype.toString.call(arr) == '[object Array]';
+};
+
+},{}],12:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -2430,8 +2471,8 @@ var substr = 'ab'.substr(-1) === 'b'
     }
 ;
 
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12}],12:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13}],13:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -2496,7 +2537,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (global){
 /*! http://mths.be/punycode v1.2.4 by @mathias */
 ;(function(root) {
@@ -3006,8 +3047,8 @@ process.chdir = function (dir) {
 
 }(this));
 
-}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],14:[function(require,module,exports){
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],15:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3093,7 +3134,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3180,16 +3221,16 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":14,"./encode":15}],17:[function(require,module,exports){
+},{"./decode":15,"./encode":16}],18:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":18}],18:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":19}],19:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3281,8 +3322,8 @@ function forEach (xs, f) {
   }
 }
 
-}).call(this,require("LkFnuF"))
-},{"./_stream_readable":20,"./_stream_writable":22,"LkFnuF":12,"core-util-is":23,"inherits":10}],19:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"./_stream_readable":21,"./_stream_writable":23,"_process":13,"core-util-is":24,"inherits":10}],20:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3330,7 +3371,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":21,"core-util-is":23,"inherits":10}],20:[function(require,module,exports){
+},{"./_stream_transform":22,"core-util-is":24,"inherits":10}],21:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3574,7 +3615,7 @@ function howMuchToRead(n, state) {
   if (state.objectMode)
     return n === 0 ? 0 : 1;
 
-  if (isNaN(n) || n === null) {
+  if (n === null || isNaN(n)) {
     // only flow one buffer at a time
     if (state.flowing && state.buffer.length)
       return state.buffer[0].length;
@@ -3609,6 +3650,7 @@ Readable.prototype.read = function(n) {
   var state = this._readableState;
   state.calledRead = true;
   var nOrig = n;
+  var ret;
 
   if (typeof n !== 'number' || n > 0)
     state.emittedReadable = false;
@@ -3627,9 +3669,28 @@ Readable.prototype.read = function(n) {
 
   // if we've ended, and we're now clear, then finish it up.
   if (n === 0 && state.ended) {
+    ret = null;
+
+    // In cases where the decoder did not receive enough data
+    // to produce a full chunk, then immediately received an
+    // EOF, state.buffer will contain [<Buffer >, <Buffer 00 ...>].
+    // howMuchToRead will see this and coerce the amount to
+    // read to zero (because it's looking at the length of the
+    // first <Buffer > in state.buffer), and we'll end up here.
+    //
+    // This can only happen via state.decoder -- no other venue
+    // exists for pushing a zero-length chunk into state.buffer
+    // and triggering this behavior. In this case, we return our
+    // remaining data and end the stream, if appropriate.
+    if (state.length > 0 && state.decoder) {
+      ret = fromList(n, state);
+      state.length -= ret.length;
+    }
+
     if (state.length === 0)
       endReadable(this);
-    return null;
+
+    return ret;
   }
 
   // All the actual chunk generation logic needs to be
@@ -3683,7 +3744,6 @@ Readable.prototype.read = function(n) {
   if (doRead && !state.reading)
     n = howMuchToRead(nOrig, state);
 
-  var ret;
   if (n > 0)
     ret = fromList(n, state);
   else
@@ -3716,8 +3776,7 @@ function chunkInvalid(state, chunk) {
       'string' !== typeof chunk &&
       chunk !== null &&
       chunk !== undefined &&
-      !state.objectMode &&
-      !er) {
+      !state.objectMode) {
     er = new TypeError('Invalid non-string/buffer chunk');
   }
   return er;
@@ -4148,7 +4207,12 @@ Readable.prototype.wrap = function(stream) {
   stream.on('data', function(chunk) {
     if (state.decoder)
       chunk = state.decoder.write(chunk);
-    if (!chunk || !state.objectMode && !chunk.length)
+
+    // don't skip over falsy values in objectMode
+    //if (state.objectMode && util.isNullOrUndefined(chunk))
+    if (state.objectMode && (chunk === null || chunk === undefined))
+      return;
+    else if (!state.objectMode && (!chunk || !chunk.length))
       return;
 
     var ret = self.push(chunk);
@@ -4292,8 +4356,8 @@ function indexOf (xs, x) {
   return -1;
 }
 
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12,"buffer":2,"core-util-is":23,"events":5,"inherits":10,"isarray":24,"stream":30,"string_decoder/":25}],21:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13,"buffer":2,"core-util-is":24,"events":5,"inherits":10,"isarray":11,"stream":30,"string_decoder/":25}],22:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4505,7 +4569,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":18,"core-util-is":23,"inherits":10}],22:[function(require,module,exports){
+},{"./_stream_duplex":19,"core-util-is":24,"inherits":10}],23:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4545,7 +4609,6 @@ Writable.WritableState = WritableState;
 var util = require('core-util-is');
 util.inherits = require('inherits');
 /*</replacement>*/
-
 
 var Stream = require('stream');
 
@@ -4895,8 +4958,8 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-}).call(this,require("LkFnuF"))
-},{"./_stream_duplex":18,"LkFnuF":12,"buffer":2,"core-util-is":23,"inherits":10,"stream":30}],23:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"./_stream_duplex":19,"_process":13,"buffer":2,"core-util-is":24,"inherits":10,"stream":30}],24:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5006,12 +5069,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":2}],24:[function(require,module,exports){
-module.exports = Array.isArray || function (arr) {
-  return Object.prototype.toString.call(arr) == '[object Array]';
-};
-
-},{}],25:[function(require,module,exports){
+},{"buffer":2}],25:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5050,6 +5108,14 @@ function assertEncoding(encoding) {
   }
 }
 
+// StringDecoder provides an interface for efficiently splitting a series of
+// buffers into a series of JS strings without breaking apart multi-byte
+// characters. CESU-8 is handled as part of the UTF-8 encoding.
+//
+// @TODO Handling all encodings inside a single object makes it very difficult
+// to reason about this code, so it should be split up in the future.
+// @TODO There should be a utf8-strict encoding that rejects invalid UTF-8 code
+// points as used by CESU-8.
 var StringDecoder = exports.StringDecoder = function(encoding) {
   this.encoding = (encoding || 'utf8').toLowerCase().replace(/[-_]/, '');
   assertEncoding(encoding);
@@ -5074,37 +5140,50 @@ var StringDecoder = exports.StringDecoder = function(encoding) {
       return;
   }
 
+  // Enough space to store all bytes of a single character. UTF-8 needs 4
+  // bytes, but CESU-8 may require up to 6 (3 bytes per surrogate).
   this.charBuffer = new Buffer(6);
+  // Number of bytes received for the current incomplete multi-byte character.
   this.charReceived = 0;
+  // Number of bytes expected for the current incomplete multi-byte character.
   this.charLength = 0;
 };
 
 
+// write decodes the given buffer and returns it as JS string that is
+// guaranteed to not contain any partial multi-byte characters. Any partial
+// character found at the end of the buffer is buffered up, and will be
+// returned when calling write again with the remaining bytes.
+//
+// Note: Converting a Buffer containing an orphan surrogate to a String
+// currently works, but converting a String to a Buffer (via `new Buffer`, or
+// Buffer#write) will replace incomplete surrogates with the unicode
+// replacement character. See https://codereview.chromium.org/121173009/ .
 StringDecoder.prototype.write = function(buffer) {
   var charStr = '';
-  var offset = 0;
-
   // if our last write ended with an incomplete multibyte character
   while (this.charLength) {
     // determine how many remaining bytes this buffer has to offer for this char
-    var i = (buffer.length >= this.charLength - this.charReceived) ?
-                this.charLength - this.charReceived :
-                buffer.length;
+    var available = (buffer.length >= this.charLength - this.charReceived) ?
+        this.charLength - this.charReceived :
+        buffer.length;
 
     // add the new bytes to the char buffer
-    buffer.copy(this.charBuffer, this.charReceived, offset, i);
-    this.charReceived += (i - offset);
-    offset = i;
+    buffer.copy(this.charBuffer, this.charReceived, 0, available);
+    this.charReceived += available;
 
     if (this.charReceived < this.charLength) {
       // still not enough chars in this buffer? wait for more ...
       return '';
     }
 
+    // remove bytes belonging to the current character from the buffer
+    buffer = buffer.slice(available, buffer.length);
+
     // get the character that was split
     charStr = this.charBuffer.slice(0, this.charLength).toString(this.encoding);
 
-    // lead surrogate (D800-DBFF) is also the incomplete character
+    // CESU-8: lead surrogate (D800-DBFF) is also the incomplete character
     var charCode = charStr.charCodeAt(charStr.length - 1);
     if (charCode >= 0xD800 && charCode <= 0xDBFF) {
       this.charLength += this.surrogateSize;
@@ -5114,34 +5193,33 @@ StringDecoder.prototype.write = function(buffer) {
     this.charReceived = this.charLength = 0;
 
     // if there are no more bytes in this buffer, just emit our char
-    if (i == buffer.length) return charStr;
-
-    // otherwise cut off the characters end from the beginning of this buffer
-    buffer = buffer.slice(i, buffer.length);
+    if (buffer.length === 0) {
+      return charStr;
+    }
     break;
   }
 
-  var lenIncomplete = this.detectIncompleteChar(buffer);
+  // determine and set charLength / charReceived
+  this.detectIncompleteChar(buffer);
 
   var end = buffer.length;
   if (this.charLength) {
     // buffer the incomplete character bytes we got
-    buffer.copy(this.charBuffer, 0, buffer.length - lenIncomplete, end);
-    this.charReceived = lenIncomplete;
-    end -= lenIncomplete;
+    buffer.copy(this.charBuffer, 0, buffer.length - this.charReceived, end);
+    end -= this.charReceived;
   }
 
   charStr += buffer.toString(this.encoding, 0, end);
 
   var end = charStr.length - 1;
   var charCode = charStr.charCodeAt(end);
-  // lead surrogate (D800-DBFF) is also the incomplete character
+  // CESU-8: lead surrogate (D800-DBFF) is also the incomplete character
   if (charCode >= 0xD800 && charCode <= 0xDBFF) {
     var size = this.surrogateSize;
     this.charLength += size;
     this.charReceived += size;
     this.charBuffer.copy(this.charBuffer, size, 0, size);
-    this.charBuffer.write(charStr.charAt(charStr.length - 1), this.encoding);
+    buffer.copy(this.charBuffer, 0, 0, size);
     return charStr.substring(0, end);
   }
 
@@ -5149,6 +5227,10 @@ StringDecoder.prototype.write = function(buffer) {
   return charStr;
 };
 
+// detectIncompleteChar determines if there is an incomplete UTF-8 character at
+// the end of the given buffer. If so, it sets this.charLength to the byte
+// length that character, and sets this.charReceived to the number of bytes
+// that are available for this character.
 StringDecoder.prototype.detectIncompleteChar = function(buffer) {
   // determine how many bytes we have to check at the end of this buffer
   var i = (buffer.length >= 3) ? 3 : buffer.length;
@@ -5178,8 +5260,7 @@ StringDecoder.prototype.detectIncompleteChar = function(buffer) {
       break;
     }
   }
-
-  return i;
+  this.charReceived = i;
 };
 
 StringDecoder.prototype.end = function(buffer) {
@@ -5202,21 +5283,19 @@ function passThroughWrite(buffer) {
 }
 
 function utf16DetectIncompleteChar(buffer) {
-  var incomplete = this.charReceived = buffer.length % 2;
-  this.charLength = incomplete ? 2 : 0;
-  return incomplete;
+  this.charReceived = buffer.length % 2;
+  this.charLength = this.charReceived ? 2 : 0;
 }
 
 function base64DetectIncompleteChar(buffer) {
-  var incomplete = this.charReceived = buffer.length % 3;
-  this.charLength = incomplete ? 3 : 0;
-  return incomplete;
+  this.charReceived = buffer.length % 3;
+  this.charLength = this.charReceived ? 3 : 0;
 }
 
 },{"buffer":2}],26:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":19}],27:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":20}],27:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Readable = exports;
 exports.Writable = require('./lib/_stream_writable.js');
@@ -5224,13 +5303,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":18,"./lib/_stream_passthrough.js":19,"./lib/_stream_readable.js":20,"./lib/_stream_transform.js":21,"./lib/_stream_writable.js":22}],28:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":19,"./lib/_stream_passthrough.js":20,"./lib/_stream_readable.js":21,"./lib/_stream_transform.js":22,"./lib/_stream_writable.js":23}],28:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":21}],29:[function(require,module,exports){
+},{"./lib/_stream_transform.js":22}],29:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":22}],30:[function(require,module,exports){
+},{"./lib/_stream_writable.js":23}],30:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5359,7 +5438,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":5,"inherits":10,"readable-stream/duplex.js":17,"readable-stream/passthrough.js":26,"readable-stream/readable.js":27,"readable-stream/transform.js":28,"readable-stream/writable.js":29}],31:[function(require,module,exports){
+},{"events":5,"inherits":10,"readable-stream/duplex.js":18,"readable-stream/passthrough.js":26,"readable-stream/readable.js":27,"readable-stream/transform.js":28,"readable-stream/writable.js":29}],31:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6068,7 +6147,7 @@ function isNullOrUndefined(arg) {
   return  arg == null;
 }
 
-},{"punycode":13,"querystring":16}],32:[function(require,module,exports){
+},{"punycode":14,"querystring":17}],32:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
@@ -6664,8 +6743,8 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-}).call(this,require("LkFnuF"),typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":32,"LkFnuF":12,"inherits":10}],34:[function(require,module,exports){
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./support/isBuffer":32,"_process":13,"inherits":10}],34:[function(require,module,exports){
 (function (process){
 /*
  Copyright 2013 Daniel Wirtz <dcode@dcode.io>
@@ -10519,8 +10598,8 @@ function hasOwnProperty(obj, prop) {
     }
 
 })(this);
-}).call(this,require("LkFnuF"))
-},{"LkFnuF":12,"bytebuffer":39,"fs":1,"path":11}],35:[function(require,module,exports){
+}).call(this,require('_process'))
+},{"_process":13,"bytebuffer":39,"fs":1,"path":12}],35:[function(require,module,exports){
 (function() { var h,l=this,m=function(a){return void 0!==a},p=function(a,b,c){a=a.split(".");c=c||l;a[0]in c||!c.execScript||c.execScript("var "+a[0]);for(var d;a.length&&(d=a.shift());)!a.length&&m(b)?c[d]=b:c=c[d]?c[d]:c[d]={}},aa=function(a,b){for(var c=a.split("."),d=b||l,e;e=c.shift();)if(null!=d[e])d=d[e];else return null;return d},ba=function(){},ca=function(a){var b=typeof a;if("object"==b)if(a){if(a instanceof Array)return"array";if(a instanceof Object)return b;var c=Object.prototype.toString.call(a);
 if("[object Window]"==c)return"object";if("[object Array]"==c||"number"==typeof a.length&&"undefined"!=typeof a.splice&&"undefined"!=typeof a.propertyIsEnumerable&&!a.propertyIsEnumerable("splice"))return"array";if("[object Function]"==c||"undefined"!=typeof a.call&&"undefined"!=typeof a.propertyIsEnumerable&&!a.propertyIsEnumerable("call"))return"function"}else return"null";else if("function"==b&&"undefined"==typeof a.call)return"object";return b},q=function(a){return"array"==ca(a)},da=function(a){var b=
 ca(a);return"array"==b||"object"==b&&"number"==typeof a.length},r=function(a){return"string"==typeof a},s=function(a){return"function"==ca(a)},ea=function(a){var b=typeof a;return"object"==b&&null!=a||"function"==b},ia=function(a){return a[ga]||(a[ga]=++ha)},ga="closure_uid_"+(1E9*Math.random()>>>0),ha=0,ja=function(a,b,c){return a.call.apply(a.bind,arguments)},ka=function(a,b,c){if(!a)throw Error();if(2<arguments.length){var d=Array.prototype.slice.call(arguments,2);return function(){var c=Array.prototype.slice.call(arguments);
@@ -10764,6 +10843,7 @@ module.exports.request = (function(_this) {
                 options.ondone(buf, header);
               } catch (_error) {
                 e = _error;
+                console.log(e);
                 return options.reject(e);
               }
             } else {
@@ -10787,11 +10867,13 @@ module.exports.request = (function(_this) {
         request.write(options.message);
       }
       request.on('error', function(e) {
+        console.log(e);
         return options.reject(e);
       });
       return request.end();
     } catch (_error) {
       e = _error;
+      console.log(e);
       return options.reject(e);
     }
   };
@@ -10829,8 +10911,23 @@ requestSynch = function(options) {
   return requestQueue.push(options);
 };
 
-ByteBuffer.prototype.toJSON = function() {
-  return JSON.parse(this.readUTF8StringBytes(this.remaining()));
+module.exports.createEvent = function(options) {
+  return {
+    order_id: options.order_id,
+    data: function() {
+      return JSON.parse(ByteBuffer.wrap(options.raw).toUTF8());
+    },
+    rawData: function() {
+      return options.raw;
+    },
+    timestamp: options.timestamp,
+    elapsed: function() {
+      return Date.now() - options.timeAdjustment - options.timestamp;
+    },
+    submission_registration_id: options.srid,
+    author: options.author,
+    event_type: options.type
+  };
 };
 
 module.exports.ByteBuffer = ByteBuffer;
@@ -10838,7 +10935,7 @@ module.exports.ByteBuffer = ByteBuffer;
 module.exports.requestSynch = requestSynch;
 
 
-}).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./ProtoBuf.js":34,"bytebuffer":39,"http":6}],37:[function(require,module,exports){
 var ByteBuffer, Collabrify, CollabrifyClient, EventEmitter, goog,
   __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
@@ -10894,15 +10991,15 @@ CollabrifyClient = (function() {
     return accessInfo;
   };
 
-  CollabrifyClient.prototype.broadcast = function(message, event_type) {
+  CollabrifyClient.prototype.broadcast = function(event_data, event_type) {
     return new Promise((function(_this) {
       return function(fulfill, reject) {
         var buffer, srid;
         srid = _this.submission_registration_id++;
-        if (message.toString() === '[object ArrayBuffer]') {
-          buffer = message;
+        if (event_data.toString() === '[object ArrayBuffer]') {
+          buffer = event_data;
         } else {
-          buffer = ByteBuffer.wrap(JSON.stringify(message)).toBuffer();
+          buffer = ByteBuffer.wrap(JSON.stringify(event_data)).toBuffer();
         }
         return Collabrify.requestSynch({
           header: 'ADD_EVENT_REQUEST',
@@ -10915,20 +11012,21 @@ CollabrifyClient = (function() {
           }),
           message: buffer,
           ondone: function(buf) {
-            var event;
-            event = Collabrify.AddEventResponse.decodeDelimited(buf);
-            event.data = message;
-            event.order_id = event.new_event_order_id;
-            event.event_type = event_type;
-            event.elapsed = function() {
-              return Date.now() - _this.timeAdjustment - event.timestamp;
-            };
-            event.author = _this.participant;
-            return fulfill(event);
-          },
-          event_type: event_type,
-          event: message,
-          submission_registration_id: srid
+            var addResponse, broadcastedEvent;
+            addResponse = Collabrify.AddEventResponse.decodeDelimited(buf);
+            broadcastedEvent = Collabrify.createEvent({
+              order_id: addResponse.new_event_order_id,
+              raw: buffer,
+              timestamp: addResponse.timestamp,
+              srid: addResponse.submission_registration_id,
+              author: _this.participant,
+              type: event_type,
+              timeAdjustment: _this.timeAdjustment
+            });
+            fulfill(broadcastedEvent);
+            console.log('from broadcast');
+            return _this.eventEmitter.emitOrdered('event', broadcastedEvent);
+          }
         });
       };
     })(this));
@@ -11032,7 +11130,7 @@ CollabrifyClient = (function() {
                 ondone: function(buf) {
                   var response;
                   response = Collabrify.GetFromBaseFileResponse.decodeDelimited(buf);
-                  _this.session.baseFile = buf.toJSON();
+                  _this.session.baseFile = JSON.parse(buf.readUTF8StringBytes(buf.remaining()));
                   return fulfill(_this.session);
                 }
               });
@@ -11104,7 +11202,7 @@ CollabrifyClient = (function() {
     })(this);
     this.session.socket.onmessage = (function(_this) {
       return function(message) {
-        var addEvent, addParticipant, e, event, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
+        var addEvent, addParticipant, e, notification, participant_id, participantsHash, removeParticipant, response, _i, _len, _ref;
         try {
           if (!_this.session) {
             return;
@@ -11112,22 +11210,54 @@ CollabrifyClient = (function() {
           notification = Collabrify.CollabrifyNotification.decode64(message.data);
           if (notification.notification_message_type === 1) {
             addEvent = Collabrify.Notification_AddEvent.decode64(notification.payload);
-            event = addEvent.event;
-            event.submission_registration_id = addEvent.submission_registration_id;
-            if (addEvent.event.author_participant_id !== _this.participant.participant_id) {
-              addEvent.event.submission_registration_id = -1;
+            if (addEvent.author_participant_id === _this.participant.participant_id) {
+              return;
             }
-            event.author = _this.session.participant[event.author_participant_id];
-            event.data = function() {
-              return event.payload.toJSON();
-            };
-            event.rawData = function() {
-              return event.payload.toBuffer();
-            };
-            addEvent.event.elapsed = function() {
-              return Date.now() - _this.timeAdjustment - event.timestamp;
-            };
-            _this.eventEmitter.emitOrdered('event', event);
+            if (addEvent.flag__event_included) {
+              _this.eventEmitter.emitOrdered('event', Collabrify.createEvent({
+                order_id: addEvent.order_id,
+                raw: addEvent.event.payload.toBuffer(),
+                timestamp: addEvent.event.timestamp,
+                srid: -1,
+                author: _this.session.participant[addEvent.author_participant_id],
+                type: addEvent.event.event_type,
+                timeAdjustment: _this.timeAdjustment
+              }));
+            } else {
+              Collabrify.request({
+                header: 'GET_EVENT_BATCH_REQUEST',
+                body: new Collabrify.GetEventBatchRequest({
+                  access_info: _this.accessInfo(),
+                  starting_order_id: addEvent.order_id,
+                  ending_order_id: -1
+                }),
+                ondone: function(buf) {
+                  var body, event, eventPB, i, _i, _ref, _results;
+                  body = Collabrify.GetEventBatchResponse.decodeDelimited(buf);
+                  if (body.number_of_events_to_follow) {
+                    _results = [];
+                    for (i = _i = 1, _ref = body.number_of_events_to_follow; 1 <= _ref ? _i <= _ref : _i >= _ref; i = 1 <= _ref ? ++_i : --_i) {
+                      eventPB = Collabrify.Event.decodeDelimited(buf);
+                      if (eventPB.author_participant_id !== _this.participant.participant_id) {
+                        event = Collabrify.createEvent({
+                          order_id: eventPB.order_id,
+                          raw: eventPB.payload.toBuffer(),
+                          timestamp: eventPB.timestamp,
+                          srid: -1,
+                          author: _this.session.participant[eventPB.author_participant_id],
+                          type: eventPB.event_type,
+                          timeAdjustment: _this.timeAdjustment
+                        });
+                        _results.push(_this.eventEmitter.emitOrdered('event', event));
+                      } else {
+                        _results.push(void 0);
+                      }
+                    }
+                    return _results;
+                  }
+                }
+              });
+            }
           }
           if (notification.notification_message_type === 2) {
             addParticipant = Collabrify.Notification_AddParticipant.decode(notification.payload);
@@ -11181,19 +11311,27 @@ CollabrifyClient = (function() {
                 ending_order_id: -1
               }),
               ondone: function(buf) {
-                var body, i, _j, _ref1, _results;
+                var body, event, eventPB, i, _j, _ref1, _results;
                 body = Collabrify.GetEventBatchResponse.decodeDelimited(buf);
                 if (body.number_of_events_to_follow) {
                   _results = [];
                   for (i = _j = 1, _ref1 = body.number_of_events_to_follow; 1 <= _ref1 ? _j <= _ref1 : _j >= _ref1; i = 1 <= _ref1 ? ++_j : --_j) {
-                    event = Collabrify.Event.decodeDelimited(buf);
-                    event.data = function() {
-                      return event.payload.toJSON();
-                    };
-                    event.rawData = function() {
-                      return event.payload.toBuffer();
-                    };
-                    _results.push(_this.eventEmitter.emitOrdered('event', event, event.order_id));
+                    eventPB = Collabrify.Event.decodeDelimited(buf);
+                    if (eventPB.author_participant_id !== _this.participant.participant_id) {
+                      event = Collabrify.createEvent({
+                        order_id: eventPB.order_id,
+                        raw: eventPB.payload.toBuffer(),
+                        timestamp: eventPB.timestamp,
+                        srid: -1,
+                        author: _this.session.participant[eventPB.author_participant_id],
+                        type: eventPB.event_type,
+                        timeAdjustment: _this.timeAdjustment
+                      });
+                      console.log('channel connected notfy');
+                      _results.push(_this.eventEmitter.emitOrdered('event', event));
+                    } else {
+                      _results.push(void 0);
+                    }
                   }
                   return _results;
                 }
@@ -14719,4 +14857,4 @@ OrderedEventEmitter = (function(_super) {
 module.exports = OrderedEventEmitter;
 
 
-},{"events":5}]},{},[38])
+},{"events":5}]},{},[38]);

@@ -57,7 +57,7 @@
         })
         .catch(function(error){
 			//session might already exist, so try to find it and join it
-            console.log('listing sessions');
+            console.log(error.toString());
             c.listSessions(['pizzza'])
             .then(function(sessions){
 				for(var i = 0; i < sessions.length; ++i){
